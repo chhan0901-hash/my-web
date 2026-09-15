@@ -1,0 +1,1180 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>정산·퍼포먼스 자동화</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#F7F5F0;
+    --surface:#FFFFFF;
+    --ink:#1C2333;
+    --ink-soft:#5B6272;
+    --ink-faint:#9A9FAE;
+    --border:#DDD7C8;
+    --accent:#2B4C7E;
+    --accent-soft:#E7EDF5;
+    --warn:#B54834;
+    --warn-soft:#F7E9E3;
+    --ok:#3F7A5C;
+    --ok-soft:#E5F0E9;
+    --jpy:#8A6D1E;
+    --jpy-soft:#FBF1D6;
+    --radius:3px;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Pretendard","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    font-size:14px;
+    line-height:1.55;
+  }
+  .mono{ font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace; font-variant-numeric:tabular-nums; }
+  header{
+    border-bottom:1px solid var(--border);
+    padding:28px 32px 22px;
+    background:var(--surface);
+  }
+  header h1{
+    margin:0 0 4px;
+    font-size:20px;
+    font-weight:700;
+    letter-spacing:-0.01em;
+  }
+  header p{
+    margin:0;
+    color:var(--ink-soft);
+    font-size:13px;
+  }
+  main{
+    max-width:1040px;
+    margin:0 auto;
+    padding:32px 24px 96px;
+  }
+  .step{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    margin-bottom:20px;
+    overflow:hidden;
+  }
+  .step-head{
+    display:flex;
+    align-items:baseline;
+    gap:10px;
+    padding:16px 20px;
+    border-bottom:1px solid var(--border);
+  }
+  .step-num{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:12px;
+    color:var(--accent);
+    border:1px solid var(--accent);
+    border-radius:2px;
+    padding:1px 6px;
+    flex:none;
+  }
+  .step-head h2{
+    margin:0;
+    font-size:15px;
+    font-weight:700;
+  }
+  .step-head .hint{
+    margin-left:auto;
+    font-size:12px;
+    color:var(--ink-faint);
+  }
+  .step-body{ padding:18px 20px 20px; }
+
+  .filegrid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:14px;
+  }
+  @media (max-width:720px){ .filegrid{ grid-template-columns:1fr; } }
+  .fileslot{
+    border:1px dashed var(--border);
+    border-radius:var(--radius);
+    padding:14px;
+  }
+  .fileslot label.slot-title{
+    display:block;
+    font-weight:700;
+    font-size:13px;
+    margin-bottom:2px;
+  }
+  .fileslot .slot-desc{
+    display:block;
+    color:var(--ink-soft);
+    font-size:12px;
+    margin-bottom:10px;
+  }
+  .fileslot input[type=file]{
+    font-size:12px;
+    width:100%;
+  }
+  .fileslot .picked{
+    margin-top:8px;
+    font-size:12px;
+    color:var(--ok);
+  }
+  .fileslot.required .slot-title::after{
+    content:" *";
+    color:var(--warn);
+  }
+
+  .row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:16px;
+    align-items:flex-end;
+  }
+  .field{ display:flex; flex-direction:column; gap:4px; }
+  .field label{ font-size:12px; color:var(--ink-soft); font-weight:600; }
+  .field input, .field select{
+    font-family:inherit;
+    font-size:13px;
+    padding:7px 9px;
+    border:1px solid var(--border);
+    border-radius:2px;
+    background:var(--bg);
+    color:var(--ink);
+  }
+  .field .derived{
+    font-size:12px;
+    color:var(--ink-soft);
+    margin-top:2px;
+  }
+  .field .derived b{ color:var(--ink); }
+
+  details.holiday-box{
+    margin-top:14px;
+    border-top:1px solid var(--border);
+    padding-top:12px;
+  }
+  details.holiday-box summary{
+    cursor:pointer;
+    font-size:12px;
+    color:var(--accent);
+    font-weight:600;
+  }
+  details.holiday-box textarea{
+    width:100%;
+    margin-top:8px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:12px;
+    border:1px solid var(--border);
+    border-radius:2px;
+    padding:8px;
+    resize:vertical;
+  }
+  details.holiday-box .holiday-hint{
+    font-size:11px;
+    color:var(--ink-faint);
+    margin-top:4px;
+  }
+
+  button.primary{
+    background:var(--ink);
+    color:#fff;
+    border:none;
+    border-radius:2px;
+    padding:11px 22px;
+    font-size:13px;
+    font-weight:700;
+    cursor:pointer;
+    letter-spacing:0.01em;
+  }
+  button.primary:hover{ background:var(--accent); }
+  button.primary:disabled{ background:var(--ink-faint); cursor:not-allowed; }
+  button.secondary{
+    background:var(--surface);
+    color:var(--ink);
+    border:1px solid var(--border);
+    border-radius:2px;
+    padding:9px 16px;
+    font-size:12px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  button.secondary:hover{ border-color:var(--ink); }
+
+  #log{
+    margin-top:12px;
+    font-size:12px;
+    color:var(--ink-soft);
+    white-space:pre-line;
+  }
+  #log .err{ color:var(--warn); font-weight:600; }
+
+  #results{ display:none; }
+  .tabbar{
+    display:flex;
+    gap:2px;
+    border-bottom:1px solid var(--border);
+    padding:0 20px;
+    background:var(--surface);
+  }
+  .tabbtn{
+    background:none;
+    border:none;
+    border-bottom:2px solid transparent;
+    padding:12px 14px;
+    font-size:13px;
+    font-weight:600;
+    color:var(--ink-soft);
+    cursor:pointer;
+  }
+  .tabbtn.active{ color:var(--ink); border-bottom-color:var(--accent); }
+  .tabpanel{ display:none; padding:18px 20px 22px; }
+  .tabpanel.active{ display:block; }
+
+  table.datatable{
+    width:100%;
+    border-collapse:collapse;
+    font-size:12.5px;
+  }
+  table.datatable th, table.datatable td{
+    border-bottom:1px solid var(--border);
+    padding:6px 8px;
+    text-align:right;
+    white-space:nowrap;
+  }
+  table.datatable th{
+    text-align:right;
+    background:var(--bg);
+    font-weight:700;
+    position:sticky;
+    top:0;
+  }
+  table.datatable th:first-child, table.datatable td:first-child,
+  table.datatable th:nth-child(2), table.datatable td:nth-child(2){
+    text-align:left;
+  }
+  table.datatable tbody tr:hover{ background:var(--accent-soft); }
+  table.datatable tr.nodata{ color:var(--ink-faint); font-style:italic; }
+  table.datatable tr.jpy{ background:var(--jpy-soft); }
+  .table-scroll{ max-height:560px; overflow:auto; border:1px solid var(--border); border-radius:2px; }
+
+  .summary-bar{
+    display:flex;
+    gap:18px;
+    margin-bottom:12px;
+    font-size:12px;
+    color:var(--ink-soft);
+  }
+  .summary-bar b{ color:var(--ink); font-size:14px; }
+
+  ul.issues{ margin:0; padding-left:0; list-style:none; }
+  ul.issues li{
+    border:1px solid var(--border);
+    border-left:3px solid var(--accent);
+    border-radius:2px;
+    padding:10px 12px;
+    margin-bottom:8px;
+    font-size:12.5px;
+  }
+  ul.issues li.warn{ border-left-color:var(--warn); background:var(--warn-soft); }
+  ul.issues li .tag{
+    display:inline-block;
+    font-size:10.5px;
+    font-weight:700;
+    color:var(--accent);
+    border:1px solid var(--accent);
+    border-radius:2px;
+    padding:0 5px;
+    margin-right:8px;
+  }
+  ul.issues li.warn .tag{ color:var(--warn); border-color:var(--warn); }
+
+  .export-bar{
+    margin-top:16px;
+    padding-top:14px;
+    border-top:1px solid var(--border);
+    display:flex;
+    gap:10px;
+    align-items:center;
+  }
+  .badge{
+    display:inline-block;
+    font-size:10.5px;
+    font-weight:700;
+    padding:1px 6px;
+    border-radius:2px;
+    background:var(--jpy-soft);
+    color:var(--jpy);
+    margin-left:6px;
+  }
+  footer{
+    max-width:1040px;
+    margin:0 auto;
+    padding:0 24px 60px;
+    color:var(--ink-faint);
+    font-size:11.5px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>정산 · 퍼포먼스 자동화</h1>
+  <p>매달 파일 4종을 올리면 프리랜서 정산과 직원 퍼포먼스를 자동으로 계산합니다. 모든 계산은 이 브라우저 안에서만 이루어지며, 파일은 어디로도 업로드되지 않습니다.</p>
+</header>
+
+<main>
+
+  <!-- STEP 1: 파일 업로드 -->
+  <section class="step">
+    <div class="step-head">
+      <span class="step-num">1</span>
+      <h2>파일 업로드</h2>
+      <span class="hint">4종 모두 필요</span>
+    </div>
+    <div class="step-body">
+      <div class="filegrid">
+        <div class="fileslot required">
+          <label class="slot-title">직원_프리랜서목록.xlsx</label>
+          <span class="slot-desc">고용형태 / 언어 / 이름 / 단가(D~H열) 1개 파일</span>
+          <input type="file" id="file-roster" accept=".xlsx,.xls" />
+          <div class="picked" id="picked-roster"></div>
+        </div>
+        <div class="fileslot required">
+          <label class="slot-title">전직원 월별근태현황.xlsx</label>
+          <span class="slot-desc">시트가 여러 개여도 됩니다(월별) · 1개 파일</span>
+          <input type="file" id="file-attendance" accept=".xlsx,.xls" />
+          <div class="picked" id="picked-attendance"></div>
+        </div>
+        <div class="fileslot required">
+          <label class="slot-title">WC_기준.csv</label>
+          <span class="slot-desc">프리랜서 정산 원본(★WC_기준 시트 내보내기) · 1개 파일</span>
+          <input type="file" id="file-wc" accept=".csv" />
+          <div class="picked" id="picked-wc"></div>
+        </div>
+        <div class="fileslot required">
+          <label class="slot-title">[BG_Schedule] xxx_NEW.csv</label>
+          <span class="slot-desc">PM별 스케줄 시트 · 여러 개 한번에 선택</span>
+          <input type="file" id="file-schedule" accept=".csv" multiple />
+          <div class="picked" id="picked-schedule"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 2: 기간 설정 -->
+  <section class="step">
+    <div class="step-head">
+      <span class="step-num">2</span>
+      <h2>대상 월 설정</h2>
+      <span class="hint">전월 26일 ~ 당월 25일 기준</span>
+    </div>
+    <div class="step-body">
+      <div class="row">
+        <div class="field">
+          <label for="target-month">대상 월</label>
+          <input type="month" id="target-month" />
+        </div>
+        <div class="field">
+          <label>집계 구간(BRP)</label>
+          <div class="derived" id="brp-range">월을 선택하세요</div>
+        </div>
+        <div class="field">
+          <label for="biz-days">영업일</label>
+          <input type="number" id="biz-days" step="0.5" style="width:90px" />
+        </div>
+        <div class="field">
+          <label>&nbsp;</label>
+          <div class="derived" id="biz-days-hint">평일 수 − 공휴일</div>
+        </div>
+      </div>
+      <details class="holiday-box">
+        <summary>공휴일 목록 편집</summary>
+        <textarea id="holiday-list" rows="4"></textarea>
+        <div class="holiday-hint">한 줄에 하나씩, YYYY-MM-DD 형식. 영업일 계산 시 평일이면서 이 목록에 있는 날짜는 제외합니다. 해가 바뀌면 이 목록을 갱신해 주세요.</div>
+      </details>
+    </div>
+  </section>
+
+  <!-- STEP 3: 실행 -->
+  <section class="step">
+    <div class="step-head">
+      <span class="step-num">3</span>
+      <h2>계산 실행</h2>
+    </div>
+    <div class="step-body">
+      <button class="primary" id="run-btn">정산 · 퍼포먼스 계산하기</button>
+      <button class="secondary" id="reset-btn" style="margin-left:8px">초기화</button>
+      <div id="log"></div>
+    </div>
+  </section>
+
+  <!-- RESULTS -->
+  <section class="step" id="results">
+    <div class="tabbar">
+      <button class="tabbtn active" data-tab="tab-freelancer">프리랜서 정산</button>
+      <button class="tabbtn" data-tab="tab-employee">직원 퍼포먼스</button>
+      <button class="tabbtn" data-tab="tab-issues">확인 필요 사항</button>
+    </div>
+
+    <div class="tabpanel active" id="tab-freelancer">
+      <div class="summary-bar" id="freelancer-summary"></div>
+      <div class="table-scroll"><table class="datatable" id="freelancer-table"></table></div>
+    </div>
+
+    <div class="tabpanel" id="tab-employee">
+      <div class="summary-bar" id="employee-summary"></div>
+      <div class="table-scroll"><table class="datatable" id="employee-table"></table></div>
+    </div>
+
+    <div class="tabpanel" id="tab-issues">
+      <ul class="issues" id="issues-list"></ul>
+    </div>
+
+    <div class="export-bar" style="padding:0 20px 20px">
+      <button class="secondary" id="export-btn">엑셀로 내보내기 (.xlsx)</button>
+      <span style="font-size:12px;color:var(--ink-faint)">두 표 + 확인 필요 사항이 시트 3개로 저장됩니다</span>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  계산 로직은 아래 script 태그 안 주석에 근거와 함께 정리되어 있습니다. 규칙이 바뀌면 이 파일의 CALC RULES 섹션만 수정하면 됩니다.
+</footer>
+
+<script>
+/* =========================================================================
+   정산 · 퍼포먼스 자동화 — 계산 로직
+   -------------------------------------------------------------------------
+   이 파일 하나로 동작합니다 (GitHub Pages에 그대로 올리면 됩니다).
+   모든 파일 처리는 브라우저 안에서만 일어나고, 어디로도 전송되지 않습니다.
+
+   CALC RULES — 회사와 합의된 계산 규칙 (2026-09 기준, 실제 데이터로 검증됨)
+   1. 집계 구간(BRP): "N월" = 전월 26일 ~ N월 25일.
+   2. 프리랜서 정산: WC_기준 CSV에서 정산 년/정산 월이 일치하는 행만 사용.
+      Task='Translation' 물량 × (Word/Char 번역단가), Task='Review' 물량 ×
+      (Word/Char 리뷰단가), 그리고 Task와 무관하게 Hours 합계 × 시간당단가.
+      세 가지를 모두 더한 값이 정산액. 단가가 없는 항목은 0원으로 계산하고
+      분량만 표시(회사 확인 결과: 단가 미계약 = 정상 상태).
+   3. 직원 퍼포먼스: PM 스케줄(xxx_NEW) CSV들에서 HBDate가 집계 구간에
+      속하는 행만 사용. 한 행의 물량(Net)은 그 행의 TR/RV/PR란에 적힌
+      사람 각각에게 독립적으로 귀속됨(리뷰어에게도 같은 물량이 잡힘).
+        - 언어=KO인 직원은 Word 기준, 그 외는 Char 기준.
+        - Word 기준: TR(Word + Char/3) + RV(〃)×0.7 + PR(〃)×0.5
+        - Char 기준: TR(Word*3 + Char) + RV(〃)×0.7 + PR(〃)×0.5
+        - Hourly 작업(TR+RV+PR 시간 합)/8 × 일일환산상수(Char=6000, Word=3000)를 더함
+        - Working days = 영업일 + 휴일근무(시간/8) − 휴무(연차 1 / 반차 0.5)
+        - 기준/day = 위 합계 ÷ Working days
+   4. 영업일 = 집계 구간 내 평일 수 − 그 중 공휴일(아래 목록, 수정 가능).
+   ========================================================================= */
+
+const DEFAULT_HOLIDAYS_2026 = [
+  '2026-01-01', // 신정
+  '2026-02-16','2026-02-17','2026-02-18', // 설날 연휴
+  '2026-03-01','2026-03-02', // 삼일절 + 대체
+  '2026-05-05', // 어린이날
+  '2026-05-24','2026-05-25', // 부처님오신날 + 대체
+  '2026-06-03', // 제9회 전국동시지방선거(임시공휴일)
+  '2026-06-06', // 현충일(대체 없음)
+  '2026-08-15','2026-08-17', // 광복절(토) + 대체(월)
+  '2026-09-24','2026-09-25','2026-09-26', // 추석 연휴
+  '2026-10-03','2026-10-05', // 개천절(토) + 대체(월)
+  '2026-10-09', // 한글날
+  '2026-12-25', // 크리스마스
+];
+
+/* ---------------------- 공용 유틸 ---------------------- */
+
+function toNum(v){
+  if (v===null || v===undefined || v==='') return 0;
+  if (typeof v === 'number') return v;
+  const n = parseFloat(String(v).replace(/,/g,''));
+  return isNaN(n) ? 0 : n;
+}
+
+function dateOnly(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+
+function fmtDate(d){
+  const p = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
+
+// Excel 시리얼 날짜값 -> Date
+function excelSerialToDate(n){
+  const utcDays = Math.floor(n - 25569);
+  const utcValue = utcDays * 86400;
+  const d = new Date(utcValue * 1000);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+// 'YYYY-MM-DD' / 'YYYY.MM.DD' / 'YYYY. M. D' / Date 객체 / 엑셀 시리얼 숫자 -> Date | null
+function parseFlexDate(v){
+  if (v===null || v===undefined || v==='') return null;
+  if (v instanceof Date) return dateOnly(v);
+  if (typeof v === 'number') return excelSerialToDate(v);
+  if (typeof v === 'string'){
+    const s = v.trim();
+    const m = s.match(/^(\d{4})\s*[.\-\/]\s*(\d{1,2})\s*[.\-\/]\s*(\d{1,2})/);
+    if (m){
+      const y=+m[1], mo=+m[2], d=+m[3];
+      if (mo>=1 && mo<=12 && d>=1 && d<=31) return new Date(y, mo-1, d);
+    }
+  }
+  return null;
+}
+
+// 헤더 셀 텍스트에서 공백/줄바꿈을 제거하고 비교 (예: 'Volume\n(Chars)' -> 'Volume(Chars)')
+function normHeader(h){
+  return h===null || h===undefined ? '' : String(h).replace(/\s+/g,'');
+}
+function findColIndex(headerRow, candidates){
+  const normCands = candidates.map(normHeader);
+  for (let i=0;i<headerRow.length;i++){
+    const hn = normHeader(headerRow[i]);
+    if (hn && normCands.includes(hn)) return i;
+  }
+  return -1;
+}
+
+function readFileAsWorkbook(file){
+  // .csv는 UTF-8 텍스트로 명시적으로 디코딩해서 읽는다.
+  // (BOM이 없는 UTF-8 CSV를 바이너리로 바로 읽으면 SheetJS가 인코딩을
+  //  잘못 추정해 한글 헤더/값이 깨지는 경우가 있어, 텍스트로 먼저 디코딩한다.)
+  const isCsv = /\.csv$/i.test(file.name);
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = e=>{
+      try{
+        let wb;
+        if (isCsv){
+          const text = new TextDecoder('utf-8').decode(new Uint8Array(e.target.result));
+          wb = XLSX.read(text, {type:'string', raw:true});
+        } else {
+          const data = new Uint8Array(e.target.result);
+          wb = XLSX.read(data, {type:'array', cellDates:true, raw:true});
+        }
+        resolve(wb);
+      } catch(err){ reject(err); }
+    };
+    reader.onerror = ()=>reject(reader.error);
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function sheetRows(ws){
+  return XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:null});
+}
+
+/* ---------------------- 단가 파싱 (엔화 / 모호값 처리) ---------------------- */
+
+function parseRateCell(v){
+  if (v===null || v===undefined || v==='') return {value:null, currency:'KRW', warning:null};
+  if (typeof v === 'number') return {value:v, currency:'KRW', warning:null};
+  const s = String(v).trim();
+  if (s.includes('엔')){
+    const num = parseFloat(s.replace(/엔/g,'').replace(/,/g,''));
+    return {value:isNaN(num)?null:num, currency:'JPY', warning:isNaN(num)?`파싱불가: ${s}`:null};
+  }
+  if (s.includes('/')){
+    return {value:null, currency:'KRW', warning:`모호한 값(단가 없음으로 처리): ${s}`};
+  }
+  const num = parseFloat(s.replace(/,/g,''));
+  return {value:isNaN(num)?null:num, currency:'KRW', warning:isNaN(num)?`파싱불가: ${s}`:null};
+}
+
+/* ---------------------- 1) 직원_프리랜서목록.xlsx ---------------------- */
+// 열 구성이 고정: A=고용형태 B=언어 C=이름 D=Word번역단가 E=Char번역단가
+// F=Word리뷰단가 G=Char리뷰단가 H=시간당단가 (헤더 텍스트는 참고용, 실제 위치로 읽음)
+
+function parseRoster(wb){
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = sheetRows(ws);
+  const freelancerRates = {};
+  const employees = {};
+  const parseWarnings = [];
+  for (let i=1;i<rows.length;i++){
+    const r = rows[i];
+    if (!r || r.length===0) continue;
+    const empType = r[0], lang = r[1], name = r[2];
+    if (!name) continue;
+    if (empType === '프리랜서'){
+      const pd=parseRateCell(r[3]), pe=parseRateCell(r[4]), pf=parseRateCell(r[5]),
+            pg=parseRateCell(r[6]), ph=parseRateCell(r[7]);
+      let currency = 'KRW';
+      [pd,pe,pf,pg,ph].forEach(p=>{ if (p.currency==='JPY') currency='JPY'; });
+      [['Word번역단가',pd],['Char번역단가',pe],['Word리뷰단가',pf],['Char리뷰단가',pg],['시간당단가',ph]]
+        .forEach(([label,p])=>{ if (p.warning) parseWarnings.push({name, field:label, warning:p.warning}); });
+      freelancerRates[name] = {
+        lang, wordTr:pd.value, charTr:pe.value, wordRv:pf.value, charRv:pg.value, hour:ph.value, currency
+      };
+    } else if (empType === '직원'){
+      employees[name] = lang;
+    }
+  }
+  return {freelancerRates, employees, parseWarnings};
+}
+
+/* ---------------------- 2) WC_기준.csv (프리랜서 정산 원본) ---------------------- */
+
+function parseWC(wb, targetYear, targetMonthLabel){
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = sheetRows(ws);
+  const header = rows[0];
+  const idx = {
+    year: findColIndex(header, ['정산 년','정산년']),
+    month: findColIndex(header, ['정산 월','정산월']),
+    worker: findColIndex(header, ['Worker']),
+    task: findColIndex(header, ['Task']),
+    volChars: findColIndex(header, ['Volume(Chars)','Volume\n(Chars)']),
+    volWords: findColIndex(header, ['Volume(Words)','Volume\n(Words)']),
+    hours: findColIndex(header, ['Hours']),
+  };
+  const missing = Object.entries(idx).filter(([,v])=>v<0).map(([k])=>k);
+  if (missing.length) throw new Error('WC_기준 파일에서 다음 열을 찾지 못했습니다: '+missing.join(', '));
+
+  const agg = {};
+  let rowCount = 0;
+  for (let i=1;i<rows.length;i++){
+    const r = rows[i];
+    if (!r) continue;
+    const y = r[idx.year];
+    const m = r[idx.month];
+    if (y===null || m===null) continue;
+    if (String(y).trim() !== String(targetYear)) continue;
+    if (String(m).trim() !== targetMonthLabel) continue;
+    const worker = r[idx.worker];
+    if (!worker) continue;
+    rowCount++;
+    const task = String(r[idx.task]||'').trim().toLowerCase();
+    const words = toNum(r[idx.volWords]);
+    const chars = toNum(r[idx.volChars]);
+    const hours = toNum(r[idx.hours]);
+    if (!agg[worker]) agg[worker] = {trWords:0,trChars:0,rvWords:0,rvChars:0,hours:0};
+    if (task === 'translation'){ agg[worker].trWords += words; agg[worker].trChars += chars; }
+    else if (task === 'review'){ agg[worker].rvWords += words; agg[worker].rvChars += chars; }
+    agg[worker].hours += hours; // Task와 무관하게 시간은 전부 합산 (PR/Testing/LQA/Other 포함)
+  }
+  return {agg, rowCount};
+}
+
+/* ---------------------- Hour 값 파싱 ----------------------
+   PM 스케줄 파일의 Hour열은 대부분 숫자지만, 일부 파일(예: 이주연)은
+   "3h 15m", "PP 30분", "20분" 같은 자유 텍스트로 기록되어 있는 경우가
+   있다. 이를 그대로 숫자 변환하면 0으로 유실되므로 아래 패턴들을 인식해
+   시간(소수)으로 환산한다. 인식하지 못한 형식은 0으로 처리하고 경고로
+   남긴다. */
+function parseHourValue(v){
+  if (v===null || v===undefined || v==='') return {value:0, warning:null};
+  if (typeof v === 'number') return {value:v, warning:null};
+  let s = String(v).trim();
+  if (/^-?[\d,]+(\.\d+)?$/.test(s)){
+    const n = parseFloat(s.replace(/,/g,''));
+    return {value:isNaN(n)?0:n, warning:isNaN(n)?`시간 파싱 실패: "${s}"`:null};
+  }
+  s = s.replace(/^PP\s*/i,'').trim(); // 'PP 30분' 처럼 붙는 접두어 제거
+  let hours=0, minutes=0, matched=false, m;
+  if ((m = s.match(/^(\d+)\s*h(?:ours?)?\s*(?:(\d+)\s*m(?:in)?)?$/i))){
+    hours=+m[1]; minutes=m[2]?+m[2]:0; matched=true;
+  } else if ((m = s.match(/^(\d+)\s*시간\s*(?:(\d+)\s*분)?$/))){
+    hours=+m[1]; minutes=m[2]?+m[2]:0; matched=true;
+  } else if ((m = s.match(/^(\d+)\s*m(?:in)?$/i))){
+    minutes=+m[1]; matched=true;
+  } else if ((m = s.match(/^(\d+)\s*분$/))){
+    minutes=+m[1]; matched=true;
+  }
+  if (matched) return {value: hours + minutes/60, warning:null};
+  return {value:0, warning:`시간 형식을 알 수 없어 0으로 처리: "${s}"`};
+}
+
+/* ---------------------- 3) [BG_Schedule] xxx_NEW.csv (직원 퍼포먼스 원본, 여러 파일) ---------------------- */
+
+function parseScheduleFile(wb){
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = sheetRows(ws);
+  const header = rows[0];
+  const idx = {
+    hbdate: findColIndex(header, ['HBDate']),
+    type: findColIndex(header, ['Type']),
+    net: findColIndex(header, ['Net 내부용','Net']),
+    hour: findColIndex(header, ['Hour']),
+    tr: findColIndex(header, ['TR']),
+    rv: findColIndex(header, ['RV']),
+    pr: findColIndex(header, ['PR']),
+  };
+  const missing = Object.entries(idx).filter(([,v])=>v<0).map(([k])=>k);
+  if (missing.length) throw new Error('스케줄 파일에서 다음 열을 찾지 못했습니다: '+missing.join(', '));
+
+  const out = [];
+  const hourWarnings = [];
+  for (let i=1;i<rows.length;i++){
+    const r = rows[i];
+    if (!r) continue;
+    const dt = parseFlexDate(r[idx.hbdate]);
+    if (!dt) continue; // HBDate가 비어있는 행은 어느 달에도 집계되지 않음
+    const hourParsed = parseHourValue(r[idx.hour]);
+    if (hourParsed.warning){
+      const who = r[idx.tr] || r[idx.rv] || r[idx.pr] || '(이름없음)';
+      hourWarnings.push(`${who} / ${fmtDate(dt)}: ${hourParsed.warning}`);
+    }
+    out.push({
+      date: dt,
+      type: r[idx.type],
+      net: toNum(r[idx.net]),
+      hour: hourParsed.value,
+      tr: r[idx.tr], rv: r[idx.rv], pr: r[idx.pr],
+    });
+  }
+  return {rows: out, hourWarnings};
+}
+
+function aggregateSchedule(allRows, startDate, endDate){
+  const agg = {};
+  function add(name, role, unit, amt){
+    if (!name) return;
+    const key = name+'|'+role+'|'+unit;
+    agg[key] = (agg[key]||0) + amt;
+  }
+  let rowsInRange = 0;
+  for (const r of allRows){
+    if (r.date < startDate || r.date > endDate) continue;
+    rowsInRange++;
+    const t = r.type;
+    for (const [role, name] of [['TR',r.tr],['RV',r.rv],['PR',r.pr]]){
+      if (!name) continue;
+      if (t==='Word') add(name,role,'Word', r.net);
+      else if (t==='Char') add(name,role,'Char', r.net);
+      else if (t==='Hourly') add(name,role,'Hour', r.hour);
+      else if (t==='W+H'){ add(name,role,'Word', r.net); add(name,role,'Hour', r.hour); }
+      else if (t==='C+H'){ add(name,role,'Char', r.net); add(name,role,'Hour', r.hour); }
+    }
+  }
+  return {agg, rowsInRange};
+}
+
+/* ---------------------- 4) 근태현황.xlsx (연차/휴일근무) ---------------------- */
+
+function parseAttendance(wb, startDate, endDate){
+  const leave = {}, holidayHours = {};
+  const coveredDates = new Set();
+  for (const sn of wb.SheetNames){
+    const ws = wb.Sheets[sn];
+    const rows = sheetRows(ws);
+    const header = rows[0];
+    const idx = {
+      date: findColIndex(header, ['근무일자']),
+      name: findColIndex(header, ['이름']),
+      note: findColIndex(header, ['비고']),
+    };
+    if (idx.date<0 || idx.name<0 || idx.note<0) continue; // 관련 없는 시트는 건너뜀
+    for (let i=1;i<rows.length;i++){
+      const r = rows[i];
+      if (!r) continue;
+      const dt = parseFlexDate(r[idx.date]);
+      if (!dt) continue;
+      if (dt < startDate || dt > endDate) continue;
+      coveredDates.add(fmtDate(dt));
+      const name = r[idx.name];
+      if (!name) continue;
+      const note = r[idx.note]!==null && r[idx.note]!==undefined ? String(r[idx.note]) : '';
+      if (note.includes('연차')) leave[name] = (leave[name]||0) + 1;
+      else if (note.includes('반차')) leave[name] = (leave[name]||0) + 0.5;
+      const m = note.match(/휴일근무\((\d+)시간(?:\s*(\d+)분)?\)/);
+      if (m){
+        const h = parseInt(m[1],10);
+        const mi = m[2] ? parseInt(m[2],10) : 0;
+        holidayHours[name] = (holidayHours[name]||0) + h + mi/60;
+      }
+    }
+  }
+  // 구간 내에서 실제로 근태 기록이 존재하는 날짜가 며칠인지 -> 누락 구간 탐지용
+  const missingDates = [];
+  let d = new Date(startDate);
+  while (d <= endDate){
+    if (!coveredDates.has(fmtDate(d))) missingDates.push(fmtDate(d));
+    d = new Date(d.getFullYear(), d.getMonth(), d.getDate()+1);
+  }
+  return {leave, holidayHours, missingDates};
+}
+
+/* ---------------------- 영업일 계산 ---------------------- */
+
+function computeBusinessDays(startDate, endDate, holidaySet){
+  let count=0;
+  let d = new Date(startDate);
+  while (d <= endDate){
+    const wd = d.getDay();
+    if (wd!==0 && wd!==6 && !holidaySet.has(fmtDate(d))) count++;
+    d = new Date(d.getFullYear(), d.getMonth(), d.getDate()+1);
+  }
+  return count;
+}
+
+/* ---------------------- 정산 / 퍼포먼스 계산 ---------------------- */
+
+function computeFreelancerSettlement(freelancerRates, wcAgg){
+  const rows = [];
+  for (const [name, rate] of Object.entries(freelancerRates)){
+    const a = wcAgg[name];
+    if (!a) continue;
+    const amount =
+      a.trWords*(rate.wordTr||0) + a.trChars*(rate.charTr||0) +
+      a.rvWords*(rate.wordRv||0) + a.rvChars*(rate.charRv||0) +
+      a.hours*(rate.hour||0);
+    rows.push({
+      name, lang:rate.lang, currency:rate.currency,
+      trWords:a.trWords, trChars:a.trChars, rvWords:a.rvWords, rvChars:a.rvChars, hours:a.hours,
+      wordTr:rate.wordTr, charTr:rate.charTr, wordRv:rate.wordRv, charRv:rate.charRv, hour:rate.hour,
+      amount: Math.round(amount*100)/100,
+    });
+  }
+  rows.sort((x,y)=> y.amount - x.amount);
+  return rows;
+}
+
+function computeEmployeePerformance(employees, schedAgg, leave, holidayHours, businessDays){
+  const rows = [];
+  for (const [name, lang] of Object.entries(employees)){
+    const g = (role,unit)=> schedAgg[name+'|'+role+'|'+unit] || 0;
+    const trW=g('TR','Word'), trC=g('TR','Char'), trH=g('TR','Hour');
+    const rvW=g('RV','Word'), rvC=g('RV','Char'), rvH=g('RV','Hour');
+    const prW=g('PR','Word'), prC=g('PR','Char'), prH=g('PR','Hour');
+    const isWord = lang === 'KO';
+    let total, hourlyEquiv, basis;
+    if (isWord){
+      total = (trW + trC/3) + (rvW + rvC/3)*0.7 + (prW + prC/3)*0.5;
+      hourlyEquiv = (trH+rvH+prH)/8 * 3000;
+      basis = 'Word/day';
+    } else {
+      total = (trW*3 + trC) + (rvW*3 + rvC)*0.7 + (prW*3 + prC)*0.5;
+      hourlyEquiv = (trH+rvH+prH)/8 * 6000;
+      basis = 'Char/day';
+    }
+    const grandTotal = total + hourlyEquiv;
+    const hyu = leave[name]||0;
+    const hyuGeun = (holidayHours[name]||0)/8;
+    const workingDays = businessDays + hyuGeun - hyu;
+    const perDay = workingDays>0 ? grandTotal/workingDays : null;
+    const hasData = [trW,trC,trH,rvW,rvC,rvH,prW,prC,prH].some(v=>v!==0);
+    rows.push({
+      name, lang, basis, trW,trC,trH,rvW,rvC,rvH,prW,prC,prH,
+      grandTotal: Math.round(grandTotal*10)/10,
+      businessDays, holidayDays: Math.round(hyuGeun*1000)/1000, leaveDays: hyu,
+      workingDays: Math.round(workingDays*1000)/1000,
+      perDay: perDay!==null ? Math.round(perDay*10)/10 : null,
+      hasData,
+    });
+  }
+  return rows;
+}
+
+/* ========================================================================
+   화면 로직 (파일 선택, 기간 설정, 실행, 렌더링, 엑셀 내보내기)
+   ======================================================================== */
+
+const state = {
+  roster:null, attendance:null, wc:null, schedules:[],
+  result:null,
+};
+
+function pickedLabel(el, text){ el.textContent = text; }
+
+document.getElementById('file-roster').addEventListener('change', e=>{
+  const f = e.target.files[0];
+  pickedLabel(document.getElementById('picked-roster'), f?`✓ ${f.name}`:'');
+});
+document.getElementById('file-attendance').addEventListener('change', e=>{
+  const f = e.target.files[0];
+  pickedLabel(document.getElementById('picked-attendance'), f?`✓ ${f.name}`:'');
+});
+document.getElementById('file-wc').addEventListener('change', e=>{
+  const f = e.target.files[0];
+  pickedLabel(document.getElementById('picked-wc'), f?`✓ ${f.name}`:'');
+});
+document.getElementById('file-schedule').addEventListener('change', e=>{
+  const files = Array.from(e.target.files);
+  pickedLabel(document.getElementById('picked-schedule'), files.length?`✓ ${files.length}개 선택됨 (${files.map(f=>f.name).join(', ')})`:'');
+});
+
+// 공휴일 textarea 기본값
+document.getElementById('holiday-list').value = DEFAULT_HOLIDAYS_2026.join('\n');
+
+// 대상 월 -> BRP 구간 / 영업일 기본값 자동 계산
+function currentHolidaySet(){
+  const txt = document.getElementById('holiday-list').value;
+  return new Set(txt.split('\n').map(s=>s.trim()).filter(Boolean));
+}
+
+function updatePeriodDerived(){
+  const val = document.getElementById('target-month').value; // 'YYYY-MM'
+  if (!val) return;
+  const [y,m] = val.split('-').map(Number);
+  const start = new Date(y, m-2, 26); // 전월 26일
+  const end = new Date(y, m-1, 25);   // 당월 25일
+  document.getElementById('brp-range').innerHTML =
+    `<b>${fmtDate(start)} ~ ${fmtDate(end)}</b>`;
+  const biz = computeBusinessDays(start, end, currentHolidaySet());
+  document.getElementById('biz-days').value = biz;
+  return {start, end, year:y, monthLabel:`${m}월`};
+}
+document.getElementById('target-month').addEventListener('change', updatePeriodDerived);
+document.getElementById('holiday-list').addEventListener('change', updatePeriodDerived);
+
+// 기본값: 이번 달
+(function initMonth(){
+  const now = new Date();
+  const val = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  document.getElementById('target-month').value = val;
+  updatePeriodDerived();
+})();
+
+function log(msg, isErr){
+  const el = document.getElementById('log');
+  const line = document.createElement('div');
+  if (isErr) line.className = 'err';
+  line.textContent = msg;
+  el.appendChild(line);
+}
+function clearLog(){ document.getElementById('log').innerHTML=''; }
+
+document.getElementById('reset-btn').addEventListener('click', ()=>{
+  location.reload();
+});
+
+document.getElementById('run-btn').addEventListener('click', async ()=>{
+  clearLog();
+  const rosterFile = document.getElementById('file-roster').files[0];
+  const attFile = document.getElementById('file-attendance').files[0];
+  const wcFile = document.getElementById('file-wc').files[0];
+  const schedFiles = Array.from(document.getElementById('file-schedule').files);
+
+  if (!rosterFile || !attFile || !wcFile || schedFiles.length===0){
+    log('4종 파일을 모두 선택해 주세요.', true);
+    return;
+  }
+  const period = updatePeriodDerived();
+  if (!period){ log('대상 월을 선택해 주세요.', true); return; }
+  const businessDays = toNum(document.getElementById('biz-days').value);
+
+  const runBtn = document.getElementById('run-btn');
+  runBtn.disabled = true;
+  try{
+    log('파일을 읽는 중...');
+    const [rosterWb, attWb, wcWb, ...schedWbs] = await Promise.all([
+      readFileAsWorkbook(rosterFile),
+      readFileAsWorkbook(attFile),
+      readFileAsWorkbook(wcFile),
+      ...schedFiles.map(readFileAsWorkbook),
+    ]);
+
+    log('직원/프리랜서 명단 파싱 중...');
+    const {freelancerRates, employees, parseWarnings} = parseRoster(rosterWb);
+
+    log('근태현황 파싱 중 (연차·휴일근무)...');
+    const {leave, holidayHours, missingDates} = parseAttendance(attWb, period.start, period.end);
+
+    log('WC_기준 정산 데이터 파싱 중...');
+    const {agg:wcAgg, rowCount:wcRowCount} = parseWC(wcWb, period.year, period.monthLabel);
+
+    log('PM 스케줄 데이터 파싱 중...');
+    let allSchedRows = [];
+    let allHourWarnings = [];
+    schedWbs.forEach(wb=>{
+      const {rows, hourWarnings} = parseScheduleFile(wb);
+      allSchedRows = allSchedRows.concat(rows);
+      allHourWarnings = allHourWarnings.concat(hourWarnings);
+    });
+    const {agg:schedAgg, rowsInRange} = aggregateSchedule(allSchedRows, period.start, period.end);
+
+    log('계산 중...');
+    const freelancerRows = computeFreelancerSettlement(freelancerRates, wcAgg);
+    const employeeRows = computeEmployeePerformance(employees, schedAgg, leave, holidayHours, businessDays);
+
+    // 확인 필요 사항 자동 탐지
+    const issues = [];
+    const wcWorkers = new Set(Object.keys(wcAgg));
+    const unmatchedWc = [...wcWorkers].filter(w=>!(w in freelancerRates));
+    if (unmatchedWc.length){
+      issues.push({tag:'이름매칭', warn:true,
+        text:`WC_기준의 Worker명 중 프리랜서 명단과 매칭되지 않은 이름: ${unmatchedWc.join(', ')}`});
+    }
+    const zeroAmount = freelancerRows.filter(r=>r.amount===0 && (r.trWords||r.trChars||r.rvWords||r.rvChars||r.hours));
+    if (zeroAmount.length){
+      issues.push({tag:'단가없음',
+        text:`단가 미계약으로 정산액이 0으로 표시된 프리랜서(분량은 정상 표시): ${zeroAmount.map(r=>r.name).join(', ')}`});
+    }
+    const noDataEmp = employeeRows.filter(r=>!r.hasData);
+    if (noDataEmp.length){
+      issues.push({tag:'작업없음',
+        text:`이번 달 PM스케줄에서 작업을 찾지 못한 직원: ${noDataEmp.map(r=>r.name).join(', ')}`});
+    }
+    if (missingDates.length){
+      issues.push({tag:'근태공백', warn:true,
+        text:`집계 구간 중 근태현황에 기록이 없는 날짜 ${missingDates.length}일: ${missingDates.join(', ')} — 이 기간에 연차/휴일근무가 있었다면 반영되지 않았을 수 있습니다.`});
+    }
+    parseWarnings.forEach(w=>{
+      issues.push({tag:'단가형식', warn:true, text:`${w.name}의 ${w.field}: ${w.warning}`});
+    });
+    const jpyNames = Object.entries(freelancerRates).filter(([,r])=>r.currency==='JPY').map(([n])=>n);
+    if (jpyNames.length){
+      issues.push({tag:'통화',
+        text:`엔화(JPY) 단가로 등록된 프리랜서: ${jpyNames.join(', ')} — 정산액이 엔 단위로 계산됩니다.`});
+    }
+    if (allHourWarnings.length){
+      const shown = allHourWarnings.slice(0,15);
+      issues.push({tag:'시간형식', warn:true,
+        text:`PM 스케줄의 Hour열에서 숫자로 인식하지 못한 값 ${allHourWarnings.length}건(0으로 처리됨): `
+          + shown.join(' · ') + (allHourWarnings.length>shown.length ? ` 외 ${allHourWarnings.length-shown.length}건` : '')});
+    }
+
+    state.result = {
+      period, businessDays, freelancerRows, employeeRows, issues,
+      wcRowCount, rowsInRange,
+    };
+
+    renderResults();
+    log(`완료 — 프리랜서 ${freelancerRows.length}명, 직원 ${employeeRows.length}명 계산됨.`);
+    document.getElementById('results').style.display = 'block';
+    document.getElementById('results').scrollIntoView({behavior:'smooth'});
+  } catch(err){
+    console.error(err);
+    log('오류: '+err.message, true);
+  } finally {
+    runBtn.disabled = false;
+  }
+});
+
+/* ---------------------- 결과 렌더링 ---------------------- */
+
+document.querySelectorAll('.tabbtn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tabbtn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.tabpanel').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab).classList.add('active');
+  });
+});
+
+function fmtNum(n, digits){
+  if (n===null || n===undefined) return '';
+  return n.toLocaleString('ko-KR', {maximumFractionDigits: digits===undefined?1:digits});
+}
+
+function renderResults(){
+  const {period, freelancerRows, employeeRows, issues} = state.result;
+
+  // 프리랜서 정산 표
+  const fSummary = document.getElementById('freelancer-summary');
+  const krwTotal = freelancerRows.filter(r=>r.currency==='KRW').reduce((s,r)=>s+r.amount,0);
+  fSummary.innerHTML = `<div>대상 월: <b>${period.monthLabel} (${fmtDate(period.start)}~${fmtDate(period.end)})</b></div>
+    <div>인원: <b>${freelancerRows.length}명</b></div>
+    <div>정산 합계(KRW): <b>${fmtNum(krwTotal,0)}원</b></div>`;
+
+  const fTable = document.getElementById('freelancer-table');
+  const fHeaders = ['이름','언어','통화','TR Words','TR Chars','RV Words','RV Chars','Hours',
+                     'Word번역','Char번역','Word리뷰','Char리뷰','시간당','정산액'];
+  let fHtml = '<thead><tr>'+fHeaders.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>';
+  freelancerRows.forEach(r=>{
+    fHtml += `<tr class="${r.currency==='JPY'?'jpy':''}">
+      <td>${r.name}</td><td>${r.lang||''}</td><td>${r.currency}</td>
+      <td class="mono">${fmtNum(r.trWords,0)}</td><td class="mono">${fmtNum(r.trChars,0)}</td>
+      <td class="mono">${fmtNum(r.rvWords,0)}</td><td class="mono">${fmtNum(r.rvChars,0)}</td>
+      <td class="mono">${fmtNum(r.hours)}</td>
+      <td class="mono">${r.wordTr??''}</td><td class="mono">${r.charTr??''}</td>
+      <td class="mono">${r.wordRv??''}</td><td class="mono">${r.charRv??''}</td><td class="mono">${r.hour??''}</td>
+      <td class="mono"><b>${fmtNum(r.amount,0)}</b></td>
+    </tr>`;
+  });
+  fTable.innerHTML = fHtml+'</tbody>';
+
+  // 직원 퍼포먼스 표
+  const eSummary = document.getElementById('employee-summary');
+  eSummary.innerHTML = `<div>대상 월: <b>${period.monthLabel} (${fmtDate(period.start)}~${fmtDate(period.end)})</b></div>
+    <div>인원: <b>${employeeRows.length}명</b></div>
+    <div>영업일: <b>${state.result.businessDays}일</b></div>`;
+
+  const eTable = document.getElementById('employee-table');
+  const eHeaders = ['이름','언어','기준','TR Word','TR Char','TR Hour','RV Word','RV Char','RV Hour',
+                     'PR Word','PR Char','PR Hour','영업일','휴일근무','휴무','환산분량','기준/day'];
+  let eHtml = '<thead><tr>'+eHeaders.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>';
+  employeeRows.forEach(r=>{
+    eHtml += `<tr class="${r.hasData?'':'nodata'}">
+      <td>${r.name}</td><td>${r.lang||''}</td><td>${r.basis}</td>
+      <td class="mono">${fmtNum(r.trW,0)}</td><td class="mono">${fmtNum(r.trC,0)}</td><td class="mono">${fmtNum(r.trH)}</td>
+      <td class="mono">${fmtNum(r.rvW,0)}</td><td class="mono">${fmtNum(r.rvC,0)}</td><td class="mono">${fmtNum(r.rvH)}</td>
+      <td class="mono">${fmtNum(r.prW,0)}</td><td class="mono">${fmtNum(r.prC,0)}</td><td class="mono">${fmtNum(r.prH)}</td>
+      <td class="mono">${r.businessDays}</td><td class="mono">${fmtNum(r.holidayDays,3)}</td><td class="mono">${fmtNum(r.leaveDays)}</td>
+      <td class="mono">${fmtNum(r.grandTotal)}</td><td class="mono"><b>${fmtNum(r.perDay)}</b></td>
+    </tr>`;
+  });
+  eTable.innerHTML = eHtml+'</tbody>';
+
+  // 확인 필요 사항
+  const issuesList = document.getElementById('issues-list');
+  if (issues.length===0){
+    issuesList.innerHTML = '<li>이번 계산에서 특별히 확인이 필요한 사항은 없었습니다.</li>';
+  } else {
+    issuesList.innerHTML = issues.map(it=>
+      `<li class="${it.warn?'warn':''}"><span class="tag">${it.tag}</span>${it.text}</li>`
+    ).join('');
+  }
+}
+
+/* ---------------------- 엑셀로 내보내기 ---------------------- */
+
+document.getElementById('export-btn').addEventListener('click', ()=>{
+  if (!state.result) return;
+  const {period, freelancerRows, employeeRows, issues, businessDays} = state.result;
+
+  const wb = XLSX.utils.book_new();
+
+  // 시트 1: 프리랜서 정산 (정산액은 수식으로 기록 -> 값 수정 시 자동 재계산됨)
+  const fHeader = ['이름','언어','통화','TR Words','TR Chars','RV Words','RV Chars','Hours',
+                    'Word번역단가','Char번역단가','Word리뷰단가','Char리뷰단가','시간당단가','정산액'];
+  const fAoa = [fHeader];
+  freelancerRows.forEach(r=>{
+    fAoa.push([r.name,r.lang,r.currency,r.trWords,r.trChars,r.rvWords,r.rvChars,r.hours,
+      r.wordTr,r.charTr,r.wordRv,r.charRv,r.hour, null]);
+  });
+  const fWs = XLSX.utils.aoa_to_sheet(fAoa);
+  freelancerRows.forEach((r,i)=>{
+    const row = i+2; // 1행 헤더
+    fWs['N'+row] = {t:'n', f:`D${row}*IF(I${row}="",0,I${row})+E${row}*IF(J${row}="",0,J${row})+F${row}*IF(K${row}="",0,K${row})+G${row}*IF(L${row}="",0,L${row})+H${row}*IF(M${row}="",0,M${row})`};
+  });
+  XLSX.utils.book_append_sheet(wb, fWs, `프리랜서정산_${period.monthLabel}`);
+
+  // 시트 2: 직원 퍼포먼스
+  const eHeader = ['이름','언어','기준','TR Word','TR Char','TR Hour','RV Word','RV Char','RV Hour',
+                    'PR Word','PR Char','PR Hour','영업일','휴일근무','휴무','환산분량','기준/day'];
+  const eAoa = [eHeader];
+  employeeRows.forEach(r=>{
+    eAoa.push([r.name,r.lang,r.basis,r.trW,r.trC,r.trH,r.rvW,r.rvC,r.rvH,r.prW,r.prC,r.prH,
+      r.businessDays,r.holidayDays,r.leaveDays,null,null]);
+  });
+  const eWs = XLSX.utils.aoa_to_sheet(eAoa);
+  employeeRows.forEach((r,i)=>{
+    const row = i+2;
+    const isWord = r.basis === 'Word/day';
+    const vol = isWord
+      ? `(D${row}+E${row}/3)+(G${row}+H${row}/3)*0.7+(J${row}+K${row}/3)*0.5`
+      : `(D${row}*3+E${row})+(G${row}*3+H${row})*0.7+(J${row}*3+K${row})*0.5`;
+    const constant = isWord ? 3000 : 6000;
+    eWs['P'+row] = {t:'n', f:`(${vol})+((F${row}+I${row}+L${row})/8)*${constant}`};
+    eWs['Q'+row] = {t:'n', f:`P${row}/(M${row}+N${row}-O${row})`};
+  });
+  XLSX.utils.book_append_sheet(wb, eWs, `직원퍼포먼스_${period.monthLabel}`);
+
+  // 시트 3: 확인 필요 사항
+  const iAoa = [['구분','내용']];
+  issues.forEach(it=> iAoa.push([it.tag, it.text]));
+  if (issues.length===0) iAoa.push(['-','확인이 필요한 사항이 없었습니다.']);
+  const iWs = XLSX.utils.aoa_to_sheet(iAoa);
+  iWs['!cols'] = [{wch:12},{wch:110}];
+  XLSX.utils.book_append_sheet(wb, iWs, '확인_필요_사항');
+
+  XLSX.writeFile(wb, `${period.monthLabel}_정산_퍼포먼스.xlsx`);
+});
+</script>
+</body>
+</html>

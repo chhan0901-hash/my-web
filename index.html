@@ -365,8 +365,30 @@
     background:var(--bg);
     color:var(--ink);
   }
-  .person-search-row{ margin-bottom:16px; }
-  .person-search-row .search-box{ max-width:420px; }
+  .person-search-row{ margin-bottom:16px; position:relative; }
+  .person-search-row .search-box{ max-width:420px; margin-bottom:0; }
+  .suggest-dropdown{
+    display:none;
+    position:absolute;
+    top:100%; left:0;
+    width:100%; max-width:420px;
+    max-height:260px;
+    overflow-y:auto;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-top:none;
+    border-radius:0 0 2px 2px;
+    box-shadow:0 4px 10px rgba(0,0,0,0.08);
+    z-index:20;
+  }
+  .suggest-dropdown.open{ display:block; }
+  .suggest-item{
+    padding:7px 10px;
+    font-size:13px;
+    cursor:pointer;
+  }
+  .suggest-item:hover, .suggest-item.hi{ background:var(--accent-soft); }
+  .suggest-empty{ padding:7px 10px; font-size:12px; color:var(--ink-faint); }
   .muted{ color:var(--ink-faint); font-size:12.5px; }
   .person-block{
     border:1px solid var(--border);
@@ -553,8 +575,8 @@
 
         <div class="tabpanel" id="tab-person">
           <div class="person-search-row">
-            <input type="text" class="search-box" id="person-search" list="person-namelist" placeholder="이름을 입력하면 저장된 달들과 비교해 보여줍니다..." />
-            <datalist id="person-namelist"></datalist>
+            <input type="text" class="search-box" id="person-search" placeholder="이름을 입력하거나 클릭해서 목록에서 선택..." autocomplete="off" />
+            <div id="person-suggest" class="suggest-dropdown"></div>
           </div>
           <div id="person-result"><p class="muted">이름을 입력해 보세요. 저장된 달 + 이번에 계산한 달을 함께 비교해서 보여줍니다.</p></div>
         </div>
@@ -1582,6 +1604,8 @@ document.getElementById('freelancers-month-select').addEventListener('change', r
 
 /* ---------------------- 인물별 비교 ---------------------- */
 
+let personNames = [];
+
 function refreshPersonNameList(){
   const names = new Set();
   const hist = loadHistory();
@@ -1593,8 +1617,7 @@ function refreshPersonNameList(){
     state.result.freelancerRows.forEach(r=>names.add(r.name));
     state.result.employeeRows.forEach(r=>names.add(r.name));
   }
-  const dl = document.getElementById('person-namelist');
-  dl.innerHTML = [...names].sort().map(n=>`<option value="${n}"></option>`).join('');
+  personNames = [...names].sort();
 }
 
 function renderPersonComparison(name){
@@ -1652,10 +1675,64 @@ function renderPersonComparison(name){
   out.innerHTML = html;
 }
 
-document.getElementById('person-search').addEventListener('input', e=>{
+/* 커스텀 드롭다운 — 처음 클릭해서 골라도, 그 다음에 다시 클릭하면 항상 목록이
+   뜨도록 직접 구현했다(네이티브 <input list>+<datalist> 조합은 브라우저에 따라
+   한 번 값이 채워지면 그 다음부터 클릭해도 목록이 안 열리는 경우가 있다). */
+const personInput = document.getElementById('person-search');
+const personSuggest = document.getElementById('person-suggest');
+let personHiIndex = -1;
+
+function openPersonSuggest(filterText){
+  const q = (filterText||'').trim().toLowerCase();
+  const list = q ? personNames.filter(n=>n.toLowerCase().includes(q)) : personNames;
+  personHiIndex = -1;
+  if (personNames.length===0){
+    personSuggest.innerHTML = '<div class="suggest-empty">아직 이름 목록이 없습니다. 계산을 한 번 실행해 주세요.</div>';
+    personSuggest.classList.add('open');
+    return;
+  }
+  if (list.length===0){
+    personSuggest.innerHTML = '<div class="suggest-empty">일치하는 이름이 없습니다.</div>';
+    personSuggest.classList.add('open');
+    return;
+  }
+  personSuggest.innerHTML = list.slice(0,80).map(n=>`<div class="suggest-item" data-name="${n}">${n}</div>`).join('');
+  personSuggest.classList.add('open');
+  personSuggest.querySelectorAll('.suggest-item').forEach(item=>{
+    // mousedown(클릭보다 먼저 발생)에서 처리해야, input의 blur로 목록이 먼저 닫히기 전에 선택을 잡아낼 수 있다.
+    item.addEventListener('mousedown', (e)=>{
+      e.preventDefault();
+      selectPersonName(item.dataset.name);
+    });
+  });
+}
+function closePersonSuggest(){ personSuggest.classList.remove('open'); }
+function selectPersonName(name){
+  personInput.value = name;
+  closePersonSuggest();
+  renderPersonComparison(name);
+}
+
+personInput.addEventListener('focus', ()=> openPersonSuggest('')); // 포커스 시엔 항상 전체 목록부터 보여준다
+personInput.addEventListener('click', ()=> openPersonSuggest(''));
+personInput.addEventListener('input', e=>{
   const v = e.target.value.trim();
+  openPersonSuggest(v);
   if (!v){ document.getElementById('person-result').innerHTML = '<p class="muted">이름을 입력해 보세요. 저장된 달 + 이번에 계산한 달을 함께 비교해서 보여줍니다.</p>'; return; }
   renderPersonComparison(v);
+});
+personInput.addEventListener('blur', ()=>{
+  setTimeout(closePersonSuggest, 150); // 목록 클릭(mousedown)이 blur보다 먼저 처리되도록 약간 지연
+});
+personInput.addEventListener('keydown', e=>{
+  const items = [...personSuggest.querySelectorAll('.suggest-item')];
+  if (!items.length) return;
+  if (e.key==='ArrowDown'){ e.preventDefault(); personHiIndex = Math.min(personHiIndex+1, items.length-1); }
+  else if (e.key==='ArrowUp'){ e.preventDefault(); personHiIndex = Math.max(personHiIndex-1, 0); }
+  else if (e.key==='Enter'){ if (personHiIndex>=0){ e.preventDefault(); selectPersonName(items[personHiIndex].dataset.name); } return; }
+  else if (e.key==='Escape'){ closePersonSuggest(); return; }
+  else return;
+  items.forEach((it,i)=> it.classList.toggle('hi', i===personHiIndex));
 });
 
 /* ---------------------- 엑셀로 내보내기 ---------------------- */

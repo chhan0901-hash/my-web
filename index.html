@@ -61,6 +61,28 @@
     margin-bottom:20px;
     overflow:hidden;
   }
+  .upload-zone{
+    background:var(--accent-soft);
+    border:1px solid var(--accent);
+    border-radius:var(--radius);
+    margin-bottom:28px;
+    overflow:hidden;
+  }
+  .upload-zone-head{
+    display:flex;
+    align-items:baseline;
+    gap:10px;
+    padding:16px 20px;
+    border-bottom:1px solid var(--accent);
+  }
+  .upload-zone-head h2{
+    margin:0;
+    font-size:15px;
+    font-weight:700;
+    color:var(--accent);
+  }
+  .upload-zone-head .hint{ margin-left:auto; font-size:12px; color:var(--accent); }
+  .upload-zone-body{ padding:18px 20px 20px; background:var(--surface); }
   .step-head{
     display:flex;
     align-items:baseline;
@@ -297,6 +319,57 @@
     display:flex;
     gap:10px;
     align-items:center;
+    flex-wrap:wrap;
+  }
+  .search-box{
+    width:100%;
+    max-width:320px;
+    font-family:inherit;
+    font-size:13px;
+    padding:7px 10px;
+    border:1px solid var(--border);
+    border-radius:2px;
+    margin-bottom:12px;
+    background:var(--bg);
+    color:var(--ink);
+  }
+  .person-search-row{ margin-bottom:16px; }
+  .person-search-row .search-box{ max-width:420px; }
+  .muted{ color:var(--ink-faint); font-size:12.5px; }
+  .person-block{
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    margin-bottom:18px;
+    overflow:hidden;
+  }
+  .person-block h3{
+    margin:0;
+    padding:10px 14px;
+    font-size:13px;
+    background:var(--bg);
+    border-bottom:1px solid var(--border);
+  }
+  .person-block .table-scroll{ border:none; max-height:none; }
+  tr.month-current td{ color:var(--accent); font-style:italic; }
+  tr.month-saved td.badge-saved{ color:var(--ok); }
+  .saved-chip{
+    display:inline-block;
+    font-size:11px;
+    font-weight:600;
+    padding:2px 7px;
+    border-radius:10px;
+    background:var(--ok-soft);
+    color:var(--ok);
+    margin:2px 4px 2px 0;
+  }
+  .saved-chip button{
+    border:none;
+    background:none;
+    color:var(--ok);
+    cursor:pointer;
+    font-weight:700;
+    margin-left:4px;
+    padding:0;
   }
   .badge{
     display:inline-block;
@@ -326,14 +399,13 @@
 
 <main>
 
-  <!-- STEP 1: 파일 업로드 -->
-  <section class="step">
-    <div class="step-head">
-      <span class="step-num">1</span>
+  <!-- 파일 업로드 (독립된 영역) -->
+  <section class="upload-zone">
+    <div class="upload-zone-head">
       <h2>파일 업로드</h2>
-      <span class="hint">4종 모두 필요</span>
+      <span class="hint">매달 이 4종만 새로 올리면 됩니다</span>
     </div>
-    <div class="step-body">
+    <div class="upload-zone-body">
       <div class="filegrid">
         <div class="fileslot required">
           <label class="slot-title">직원_프리랜서목록.xlsx</label>
@@ -363,10 +435,10 @@
     </div>
   </section>
 
-  <!-- STEP 2: 기간 설정 -->
+  <!-- STEP 1: 기간 설정 -->
   <section class="step">
     <div class="step-head">
-      <span class="step-num">2</span>
+      <span class="step-num">1</span>
       <h2>대상 월 설정</h2>
       <span class="hint">전월 26일 ~ 당월 25일 기준</span>
     </div>
@@ -397,11 +469,12 @@
     </div>
   </section>
 
-  <!-- STEP 3: 실행 -->
+  <!-- STEP 2: 실행 -->
   <section class="step">
     <div class="step-head">
-      <span class="step-num">3</span>
+      <span class="step-num">2</span>
       <h2>계산 실행</h2>
+      <span class="hint" id="saved-months-hint"></span>
     </div>
     <div class="step-body">
       <button class="primary" id="run-btn">정산 · 퍼포먼스 계산하기</button>
@@ -415,17 +488,28 @@
     <div class="tabbar">
       <button class="tabbtn active" data-tab="tab-freelancer">프리랜서 정산</button>
       <button class="tabbtn" data-tab="tab-employee">직원 퍼포먼스</button>
+      <button class="tabbtn" data-tab="tab-person">인물별 비교</button>
       <button class="tabbtn" data-tab="tab-issues">확인 필요 사항</button>
     </div>
 
     <div class="tabpanel active" id="tab-freelancer">
       <div class="summary-bar" id="freelancer-summary"></div>
+      <input type="text" class="search-box" id="freelancer-search" placeholder="이름으로 검색..." />
       <div class="table-scroll"><table class="datatable" id="freelancer-table"></table></div>
     </div>
 
     <div class="tabpanel" id="tab-employee">
       <div class="summary-bar" id="employee-summary"></div>
+      <input type="text" class="search-box" id="employee-search" placeholder="이름으로 검색..." />
       <div class="table-scroll"><table class="datatable" id="employee-table"></table></div>
+    </div>
+
+    <div class="tabpanel" id="tab-person">
+      <div class="person-search-row">
+        <input type="text" class="search-box" id="person-search" list="person-namelist" placeholder="이름을 입력하면 저장된 달들과 비교해 보여줍니다..." />
+        <datalist id="person-namelist"></datalist>
+      </div>
+      <div id="person-result"><p class="muted">이름을 입력해 보세요. 저장된 달 + 이번에 계산한 달을 함께 비교해서 보여줍니다.</p></div>
     </div>
 
     <div class="tabpanel" id="tab-issues">
@@ -434,7 +518,8 @@
 
     <div class="export-bar" style="padding:0 20px 20px">
       <button class="secondary" id="export-btn">엑셀로 내보내기 (.xlsx)</button>
-      <span style="font-size:12px;color:var(--ink-faint)">두 표 + 확인 필요 사항이 시트 3개로 저장됩니다</span>
+      <button class="primary" id="confirm-save-btn" style="background:var(--ok)">이번 달 데이터 확정 저장</button>
+      <span style="font-size:12px;color:var(--ink-faint)" id="confirm-hint">저장하면 인물별 비교에서 다음 달과 비교할 수 있습니다. 같은 달을 다시 저장하면 이전 값을 덮어씁니다.</span>
     </div>
   </section>
 
@@ -878,6 +963,52 @@ const state = {
   result:null,
 };
 
+/* ---------------------- 월별 데이터 저장 (localStorage) ----------------------
+   "확정 저장" 버튼을 눌렀을 때만 그 달의 계산 결과(표 데이터)를 브라우저에
+   저장한다. 원본 업로드 파일은 저장하지 않고, 계산이 끝난 결과 값만 저장하므로
+   용량이 작다. 같은 달을 다시 저장하면 그대로 덮어쓴다.
+   주의: 이 저장은 "이 브라우저·이 기기"에만 남는다 — 다른 사람 PC나 다른
+   브라우저에서는 보이지 않는다. 여러 사람이 같이 보려면 내보내기한 엑셀을
+   공유하는 편이 확실하다. */
+const HISTORY_KEY = 'bg_calc_monthly_history_v1';
+
+function loadHistory(){
+  try{
+    const raw = localStorage.getItem(HISTORY_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch(e){ return {}; }
+}
+function saveHistoryToStorage(hist){
+  try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(hist)); return true; }
+  catch(e){ console.error(e); return false; }
+}
+function monthKeyFromPeriod(period){
+  // 대상 월 자체(당월 25일이 속한 달)를 키로 쓴다.
+  const d = period.end;
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+
+function renderSavedMonthsHint(){
+  const hist = loadHistory();
+  const keys = Object.keys(hist).sort();
+  const hintEl = document.getElementById('saved-months-hint');
+  if (keys.length===0){ hintEl.textContent = '아직 저장된 달이 없습니다'; return; }
+  hintEl.innerHTML = '저장된 달: ' + keys.map(k=>
+    `<span class="saved-chip">${k}<button type="button" data-monthkey="${k}" title="삭제">×</button></span>`
+  ).join('');
+  hintEl.querySelectorAll('button[data-monthkey]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const k = btn.dataset.monthkey;
+      if (!confirm(`${k} 저장 데이터를 삭제할까요?`)) return;
+      const h = loadHistory();
+      delete h[k];
+      saveHistoryToStorage(h);
+      renderSavedMonthsHint();
+      if (state.result) refreshPersonNameList();
+    });
+  });
+}
+
 function pickedLabel(el, text){ el.textContent = text; }
 
 document.getElementById('file-roster').addEventListener('change', e=>{
@@ -928,6 +1059,7 @@ document.getElementById('holiday-list').addEventListener('change', updatePeriodD
   document.getElementById('target-month').value = val;
   updatePeriodDerived();
 })();
+renderSavedMonthsHint();
 
 function log(msg, isErr){
   const el = document.getElementById('log');
@@ -1061,21 +1193,22 @@ function fmtNum(n, digits){
   return n.toLocaleString('ko-KR', {maximumFractionDigits: digits===undefined?1:digits});
 }
 
-function renderResults(){
-  const {period, freelancerRows, employeeRows, issues} = state.result;
+function renderFreelancerTable(){
+  const {freelancerRows} = state.result;
+  const filter = document.getElementById('freelancer-search').value.trim().toLowerCase();
+  const rows = filter ? freelancerRows.filter(r=>r.name.toLowerCase().includes(filter)) : freelancerRows;
 
-  // 프리랜서 정산 표
   const fSummary = document.getElementById('freelancer-summary');
   const krwTotal = freelancerRows.filter(r=>r.currency==='KRW').reduce((s,r)=>s+r.amount,0);
-  fSummary.innerHTML = `<div>대상 월: <b>${period.monthLabel} (${fmtDate(period.start)}~${fmtDate(period.end)})</b></div>
-    <div>인원: <b>${freelancerRows.length}명</b></div>
+  fSummary.innerHTML = `<div>대상 월: <b>${state.result.period.monthLabel} (${fmtDate(state.result.period.start)}~${fmtDate(state.result.period.end)})</b></div>
+    <div>인원: <b>${freelancerRows.length}명</b>${filter?` (검색 결과 ${rows.length}명)`:''}</div>
     <div>정산 합계(KRW): <b>${fmtNum(krwTotal,0)}원</b></div>`;
 
   const fTable = document.getElementById('freelancer-table');
   const fHeaders = ['이름','언어','통화','TR Words','TR Chars','RV Words','RV Chars','Hours',
                      'Word번역','Char번역','Word리뷰','Char리뷰','시간당','정산액'];
   let fHtml = '<thead><tr>'+fHeaders.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>';
-  freelancerRows.forEach(r=>{
+  rows.forEach(r=>{
     fHtml += `<tr class="${r.currency==='JPY'?'jpy':''}">
       <td>${r.name}</td><td>${r.lang||''}</td><td>${r.currency}</td>
       <td class="mono">${fmtNum(r.trWords,0)}</td><td class="mono">${fmtNum(r.trChars,0)}</td>
@@ -1087,18 +1220,23 @@ function renderResults(){
     </tr>`;
   });
   fTable.innerHTML = fHtml+'</tbody>';
+}
 
-  // 직원 퍼포먼스 표
+function renderEmployeeTable(){
+  const {employeeRows} = state.result;
+  const filter = document.getElementById('employee-search').value.trim().toLowerCase();
+  const rows = filter ? employeeRows.filter(r=>r.name.toLowerCase().includes(filter)) : employeeRows;
+
   const eSummary = document.getElementById('employee-summary');
-  eSummary.innerHTML = `<div>대상 월: <b>${period.monthLabel} (${fmtDate(period.start)}~${fmtDate(period.end)})</b></div>
-    <div>인원: <b>${employeeRows.length}명</b></div>
+  eSummary.innerHTML = `<div>대상 월: <b>${state.result.period.monthLabel} (${fmtDate(state.result.period.start)}~${fmtDate(state.result.period.end)})</b></div>
+    <div>인원: <b>${employeeRows.length}명</b>${filter?` (검색 결과 ${rows.length}명)`:''}</div>
     <div>영업일: <b>${state.result.businessDays}일</b></div>`;
 
   const eTable = document.getElementById('employee-table');
   const eHeaders = ['이름','언어','기준','TR Word','TR Char','TR Hour','RV Word','RV Char','RV Hour',
                      'PR Word','PR Char','PR Hour','영업일','휴일근무','휴무','환산분량','기준/day'];
   let eHtml = '<thead><tr>'+eHeaders.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>';
-  employeeRows.forEach(r=>{
+  rows.forEach(r=>{
     eHtml += `<tr class="${r.hasData?'':'nodata'}">
       <td>${r.name}</td><td>${r.lang||''}</td><td>${r.basis}</td>
       <td class="mono">${fmtNum(r.trW,0)}</td><td class="mono">${fmtNum(r.trC,0)}</td><td class="mono">${fmtNum(r.trH)}</td>
@@ -1109,6 +1247,16 @@ function renderResults(){
     </tr>`;
   });
   eTable.innerHTML = eHtml+'</tbody>';
+}
+
+document.getElementById('freelancer-search').addEventListener('input', renderFreelancerTable);
+document.getElementById('employee-search').addEventListener('input', renderEmployeeTable);
+
+function renderResults(){
+  const {issues} = state.result;
+
+  renderFreelancerTable();
+  renderEmployeeTable();
 
   // 확인 필요 사항
   const issuesList = document.getElementById('issues-list');
@@ -1119,7 +1267,117 @@ function renderResults(){
       `<li class="${it.warn?'warn':''}"><span class="tag">${it.tag}</span>${it.text}</li>`
     ).join('');
   }
+
+  refreshPersonNameList();
+  const searchBox = document.getElementById('person-search');
+  if (searchBox.value.trim()) renderPersonComparison(searchBox.value.trim());
 }
+
+/* ---------------------- 확정 저장 (월별 이력) ---------------------- */
+
+document.getElementById('confirm-save-btn').addEventListener('click', ()=>{
+  if (!state.result) return;
+  const hist = loadHistory();
+  const key = monthKeyFromPeriod(state.result.period);
+  if (hist[key] && !confirm(`${key} 데이터가 이미 저장되어 있습니다. 이번 계산 결과로 덮어쓸까요?`)) return;
+  hist[key] = {
+    monthLabel: state.result.period.monthLabel,
+    start: fmtDate(state.result.period.start),
+    end: fmtDate(state.result.period.end),
+    businessDays: state.result.businessDays,
+    freelancerRows: state.result.freelancerRows,
+    employeeRows: state.result.employeeRows,
+    savedAt: new Date().toISOString(),
+  };
+  const ok = saveHistoryToStorage(hist);
+  if (!ok){
+    alert('저장에 실패했습니다. 브라우저 저장공간이 가득 찼거나(시크릿 모드 등) 저장이 차단되어 있을 수 있습니다.');
+    return;
+  }
+  renderSavedMonthsHint();
+  refreshPersonNameList();
+  const searchBox = document.getElementById('person-search');
+  if (searchBox.value.trim()) renderPersonComparison(searchBox.value.trim());
+  alert(`${key} 데이터를 저장했습니다.`);
+});
+
+/* ---------------------- 인물별 비교 ---------------------- */
+
+function refreshPersonNameList(){
+  const names = new Set();
+  const hist = loadHistory();
+  Object.values(hist).forEach(m=>{
+    m.freelancerRows.forEach(r=>names.add(r.name));
+    m.employeeRows.forEach(r=>names.add(r.name));
+  });
+  if (state.result){
+    state.result.freelancerRows.forEach(r=>names.add(r.name));
+    state.result.employeeRows.forEach(r=>names.add(r.name));
+  }
+  const dl = document.getElementById('person-namelist');
+  dl.innerHTML = [...names].sort().map(n=>`<option value="${n}"></option>`).join('');
+}
+
+function renderPersonComparison(name){
+  const hist = loadHistory();
+  const savedKeys = Object.keys(hist).sort();
+  const currentKey = state.result ? monthKeyFromPeriod(state.result.period) : null;
+  const currentIsSaved = currentKey && hist[currentKey];
+
+  // 월별 목록 구성: 저장된 달 + (저장 안 된) 이번 계산 달
+  const months = savedKeys.map(k=>({key:k, data:hist[k], isCurrent:false}));
+  if (state.result && !currentIsSaved){
+    months.push({key: currentKey+' (미저장 · 이번 계산)', data:{
+      freelancerRows: state.result.freelancerRows, employeeRows: state.result.employeeRows,
+    }, isCurrent:true});
+  }
+  months.sort((a,b)=> a.key.localeCompare(b.key));
+
+  const flRows = [], empRows = [];
+  months.forEach(m=>{
+    const fr = m.data.freelancerRows.find(r=>r.name===name);
+    if (fr) flRows.push({month:m.key, isCurrent:m.isCurrent, ...fr});
+    const er = m.data.employeeRows.find(r=>r.name===name);
+    if (er) empRows.push({month:m.key, isCurrent:m.isCurrent, ...er});
+  });
+
+  const out = document.getElementById('person-result');
+  if (flRows.length===0 && empRows.length===0){
+    out.innerHTML = `<p class="muted">"${name}"에 대한 데이터를 찾지 못했습니다. 이번에 계산한 달이나 저장된 달 중 이 이름이 있는지 확인해 주세요.</p>`;
+    return;
+  }
+  let html = '';
+  if (flRows.length){
+    html += `<div class="person-block"><h3>${name} — 프리랜서 정산 (월별)</h3>
+      <div class="table-scroll"><table class="datatable">
+      <thead><tr><th>월</th><th>언어</th><th>통화</th><th>TR Words</th><th>TR Chars</th><th>RV Words</th><th>RV Chars</th><th>Hours</th><th>정산액</th></tr></thead>
+      <tbody>${flRows.map(r=>`<tr class="${r.isCurrent?'month-current':''}">
+        <td>${r.month}</td><td>${r.lang||''}</td><td>${r.currency}</td>
+        <td class="mono">${fmtNum(r.trWords,0)}</td><td class="mono">${fmtNum(r.trChars,0)}</td>
+        <td class="mono">${fmtNum(r.rvWords,0)}</td><td class="mono">${fmtNum(r.rvChars,0)}</td>
+        <td class="mono">${fmtNum(r.hours)}</td><td class="mono"><b>${fmtNum(r.amount,0)}</b></td>
+      </tr>`).join('')}</tbody></table></div></div>`;
+  }
+  if (empRows.length){
+    html += `<div class="person-block"><h3>${name} — 직원 퍼포먼스 (월별)</h3>
+      <div class="table-scroll"><table class="datatable">
+      <thead><tr><th>월</th><th>기준</th><th>TR Word</th><th>TR Char</th><th>TR Hour</th><th>RV Word</th><th>RV Char</th><th>RV Hour</th><th>PR Word</th><th>PR Char</th><th>PR Hour</th><th>환산분량</th><th>기준/day</th></tr></thead>
+      <tbody>${empRows.map(r=>`<tr class="${r.isCurrent?'month-current':''}">
+        <td>${r.month}</td><td>${r.basis}</td>
+        <td class="mono">${fmtNum(r.trW,0)}</td><td class="mono">${fmtNum(r.trC,0)}</td><td class="mono">${fmtNum(r.trH)}</td>
+        <td class="mono">${fmtNum(r.rvW,0)}</td><td class="mono">${fmtNum(r.rvC,0)}</td><td class="mono">${fmtNum(r.rvH)}</td>
+        <td class="mono">${fmtNum(r.prW,0)}</td><td class="mono">${fmtNum(r.prC,0)}</td><td class="mono">${fmtNum(r.prH)}</td>
+        <td class="mono">${fmtNum(r.grandTotal)}</td><td class="mono"><b>${fmtNum(r.perDay)}</b></td>
+      </tr>`).join('')}</tbody></table></div></div>`;
+  }
+  out.innerHTML = html;
+}
+
+document.getElementById('person-search').addEventListener('input', e=>{
+  const v = e.target.value.trim();
+  if (!v){ document.getElementById('person-result').innerHTML = '<p class="muted">이름을 입력해 보세요. 저장된 달 + 이번에 계산한 달을 함께 비교해서 보여줍니다.</p>'; return; }
+  renderPersonComparison(v);
+});
 
 /* ---------------------- 엑셀로 내보내기 ---------------------- */
 
@@ -1165,7 +1423,7 @@ document.getElementById('export-btn').addEventListener('click', ()=>{
   });
   XLSX.utils.book_append_sheet(wb, eWs, `직원퍼포먼스_${period.monthLabel}`);
 
-  // 시트 3: 확인 필요 사항 
+  // 시트 3: 확인 필요 사항
   const iAoa = [['구분','내용']];
   issues.forEach(it=> iAoa.push([it.tag, it.text]));
   if (issues.length===0) iAoa.push(['-','확인이 필요한 사항이 없었습니다.']);

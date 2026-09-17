@@ -85,6 +85,13 @@
     color:var(--ink-faint);
     line-height:1.5;
   }
+  .server-status{
+    font-size:11px;
+    font-weight:700;
+    margin-bottom:8px;
+  }
+  .server-status.on{ color:var(--ok); }
+  .server-status.off{ color:var(--ink-faint); }
   .content{
     flex:1;
     min-width:0;
@@ -457,7 +464,10 @@
       <button class="nav-link" data-panel="panel-freelancers">프리랜서</button>
     </div>
 
-    <div class="sidebar-foot">모든 계산은 이 브라우저 안에서만 이루어지고, 파일은 어디로도 업로드되지 않습니다.</div>
+    <div class="sidebar-foot">
+      <div id="server-status" class="server-status off">○ 이 브라우저에만 저장 (로컬 전용)</div>
+      모든 계산은 이 브라우저 안에서만 이루어지고, 파일은 어디로도 업로드되지 않습니다.
+    </div>
   </nav>
 
   <main class="content">
@@ -1083,21 +1093,80 @@ document.querySelectorAll('.nav-link').forEach(btn=>{
    데이터)를 자동으로 저장한다 — 같은 달을 다시 계산하면 그대로 덮어쓴다.
    원본 업로드 파일 자체는 저장하지 않고 계산이 끝난 결과 값만 저장하므로
    용량이 작다.
-   주의: 이 저장은 "이 브라우저·이 기기"에만 남는다 — 다른 사람 PC나 다른
-   브라우저에서는 보이지 않는다. 아래 이력 내보내기/가져오기(.json)로 파일을
-   주고받으면 다른 컴퓨터와 공유할 수 있다. */
+
+   기본은 "이 브라우저·이 기기"에만 남는 localStorage 저장이다. 다만 이
+   index.html을 server.js(같이 제공된 초경량 로컬 서버)와 함께 실행 중이면,
+   자동으로 그 서버와 몇 초 간격으로 동기화해서 같은 사내망의 여러 사람이
+   같은 이력을 보게 된다 — 서버가 없으면 지금처럼 이 브라우저에만 저장되는
+   방식으로 조용히 동작한다(코드/사용법이 달라지지 않는다). */
 const HISTORY_KEY = 'bg_calc_monthly_history_v1';
+let historyCache = null;       // 이력 데이터의 메모리 캐시(있으면 이걸 우선 사용)
+let serverSyncOn = false;      // server.js 감지 성공 여부
+const SERVER_POLL_MS = 4000;   // 서버와 동기화하는 주기(4초)
 
 function loadHistory(){
+  if (historyCache) return historyCache;
   try{
     const raw = localStorage.getItem(HISTORY_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch(e){ return {}; }
+    historyCache = raw ? JSON.parse(raw) : {};
+  } catch(e){ historyCache = {}; }
+  return historyCache;
 }
 function saveHistoryToStorage(hist){
-  try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(hist)); return true; }
+  historyCache = hist;
+  try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(hist)); }
   catch(e){ console.error(e); return false; }
+  pushHistoryToServer(hist); // 서버가 있으면 백그라운드로 같이 올림(실패해도 로컬 저장은 이미 됨)
+  return true;
 }
+
+// ---- server.js 연동 (있으면 자동으로 붙고, 없으면 조용히 무시됨) ----
+async function pullHistoryFromServer(){
+  try{
+    const res = await fetch('/api/history', {cache:'no-store'});
+    if (!res.ok) return false;
+    const data = await res.json();
+    historyCache = data;
+    try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(data)); }catch(e){}
+    return true;
+  } catch(e){ return false; }
+}
+async function pushHistoryToServer(hist){
+  if (!serverSyncOn) return;
+  try{
+    await fetch('/api/history', {
+      method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(hist),
+    });
+  } catch(e){ console.warn('서버 동기화 실패(오프라인이거나 서버가 꺼졌을 수 있음):', e); }
+}
+function setServerStatus(on){
+  serverSyncOn = on;
+  const el = document.getElementById('server-status');
+  if (!el) return;
+  el.textContent = on ? '● 서버와 동기화 중 (여러 명이 같이 봄)' : '○ 이 브라우저에만 저장 (로컬 전용)';
+  el.className = on ? 'server-status on' : 'server-status off';
+}
+function refreshAllHistoryViews(){
+  renderHistoryPanel();
+  renderEmployeesPanel();
+  renderFreelancersPanel();
+  refreshPersonNameList();
+  const pv = document.getElementById('person-search');
+  if (pv && pv.value.trim()) renderPersonComparison(pv.value.trim());
+}
+async function initServerSync(){
+  const ok = await pullHistoryFromServer();
+  setServerStatus(ok);
+  if (!ok) return; // server.js 없이 실행 중 — 지금까지처럼 로컬 저장만 사용
+  refreshAllHistoryViews();
+  setInterval(async ()=>{
+    const before = JSON.stringify(historyCache);
+    const stillOk = await pullHistoryFromServer();
+    setServerStatus(stillOk);
+    if (stillOk && JSON.stringify(historyCache) !== before) refreshAllHistoryViews();
+  }, SERVER_POLL_MS);
+}
+
 function monthKeyFromPeriod(period){
   // 대상 월 자체(당월 25일이 속한 달)를 키로 쓴다.
   const d = period.end;
@@ -1241,6 +1310,7 @@ document.getElementById('holiday-list').addEventListener('change', updatePeriodD
   updatePeriodDerived();
 })();
 renderHistoryPanel();
+initServerSync();
 
 function log(msg, isErr){
   const el = document.getElementById('log');

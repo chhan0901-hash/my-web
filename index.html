@@ -294,6 +294,8 @@
     position:sticky;
     top:0;
   }
+  table.datatable th.sortable{ cursor:pointer; user-select:none; }
+  table.datatable th.sortable:hover{ background:var(--accent-soft); }
   table.datatable th:first-child, table.datatable td:first-child,
   table.datatable th:nth-child(2), table.datatable td:nth-child(2){
     text-align:left;
@@ -1658,6 +1660,18 @@ function populateMonthSelect(selectEl, months){
 /* ---------------------- 대시보드 > 직원 퍼포먼스 (직원 전용 + 월 선택 + 언어 필터) ---------------------- */
 
 let employeesLangFilter = null;
+let employeesSortDir = null;   // null | 'asc' | 'desc' — '기준/day' 열 기준 정렬
+let freelancersSortDir = null; // null | 'asc' | 'desc' — '정산액' 열 기준 정렬
+
+// null/undefined 값은 정렬 방향과 무관하게 항상 맨 아래로 보낸다(데이터 없음이라 값이 낮은 게 아니므로).
+function compareNullable(av, bv, dir){
+  const aNull = (av===null || av===undefined);
+  const bNull = (bv===null || bv===undefined);
+  if (aNull && bNull) return 0;
+  if (aNull) return 1;
+  if (bNull) return -1;
+  return dir==='asc' ? av-bv : bv-av;
+}
 
 // wrap 요소(div)와 목록(ul) id, 그리고 이슈 배열을 받아 해당 category(employee/freelancer)에
 // 해당하는 것만 걸러서 그린다. category 없이 저장된 옛날 이슈(과거 버전에서 저장된 달)는
@@ -1709,6 +1723,9 @@ function renderEmployeesPanel(){
   let rows = employeeRows;
   if (employeesLangFilter) rows = rows.filter(r=>r.lang===employeesLangFilter);
   if (filterText) rows = rows.filter(r=>r.name.toLowerCase().includes(filterText));
+  if (employeesSortDir){
+    rows = [...rows].sort((a,b)=>compareNullable(a.perDay, b.perDay, employeesSortDir));
+  }
 
   const summary = document.getElementById('employees-panel-summary');
   summary.innerHTML = `<div>대상 월: <b>${monthLabel}</b></div>
@@ -1718,7 +1735,10 @@ function renderEmployeesPanel(){
   const table = document.getElementById('employees-panel-table');
   const headers = ['이름','언어','기준','TR Word','TR Char','TR Hour','RV Word','RV Char','RV Hour',
                     'PR Word','PR Char','PR Hour','영업일','휴일근무','휴무','환산분량','기준/day'];
-  let html = '<thead><tr>'+headers.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>';
+  const sortArrow = employeesSortDir==='asc' ? ' ▲' : employeesSortDir==='desc' ? ' ▼' : '';
+  let html = '<thead><tr>'+headers.map(h=>
+    h==='기준/day' ? `<th class="sortable" data-sort="perday" title="클릭해서 정렬">${h}${sortArrow}</th>` : `<th>${h}</th>`
+  ).join('')+'</tr></thead><tbody>';
   rows.forEach(r=>{
     html += `<tr class="${r.hasData?'':'nodata'}">
       <td><button type="button" class="name-link" data-name="${r.name}">${r.name}</button></td><td>${r.lang||''}</td><td>${r.basis}</td>
@@ -1730,6 +1750,11 @@ function renderEmployeesPanel(){
     </tr>`;
   });
   table.innerHTML = html+'</tbody>';
+  const sortTh = table.querySelector('th[data-sort="perday"]');
+  if (sortTh) sortTh.addEventListener('click', ()=>{
+    employeesSortDir = employeesSortDir==='asc' ? 'desc' : 'asc';
+    renderEmployeesPanel();
+  });
   table.querySelectorAll('.name-link').forEach(btn=>{
     btn.addEventListener('click', ()=> openPersonDetail(btn.dataset.name));
   });
@@ -1840,7 +1865,10 @@ function renderFreelancersPanel(){
   renderPanelIssues('freelancers-panel-issues-wrap', 'freelancers-panel-issues', issues, 'freelancer');
 
   const filterText = document.getElementById('freelancers-panel-search').value.trim().toLowerCase();
-  const rows = filterText ? freelancerRows.filter(r=>r.name.toLowerCase().includes(filterText)) : freelancerRows;
+  let rows = filterText ? freelancerRows.filter(r=>r.name.toLowerCase().includes(filterText)) : freelancerRows;
+  if (freelancersSortDir){
+    rows = [...rows].sort((a,b)=>compareNullable(a.amount, b.amount, freelancersSortDir));
+  }
 
   const krwTotal = freelancerRows.filter(r=>r.currency==='KRW').reduce((s,r)=>s+r.amount,0);
   const summary = document.getElementById('freelancers-panel-summary');
@@ -1851,7 +1879,10 @@ function renderFreelancersPanel(){
   const table = document.getElementById('freelancers-panel-table');
   const headers = ['이름','언어','통화','TR Words','TR Chars','RV Words','RV Chars','Hours',
                     'Word번역','Char번역','Word리뷰','Char리뷰','시간당','정산액'];
-  let html = '<thead><tr>'+headers.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>';
+  const sortArrow = freelancersSortDir==='asc' ? ' ▲' : freelancersSortDir==='desc' ? ' ▼' : '';
+  let html = '<thead><tr>'+headers.map(h=>
+    h==='정산액' ? `<th class="sortable" data-sort="amount" title="클릭해서 정렬">${h}${sortArrow}</th>` : `<th>${h}</th>`
+  ).join('')+'</tr></thead><tbody>';
   rows.forEach(r=>{
     html += `<tr class="${r.currency==='JPY'?'jpy':''}">
       <td>${r.name}</td><td>${r.lang||''}</td><td>${r.currency}</td>
@@ -1864,6 +1895,11 @@ function renderFreelancersPanel(){
     </tr>`;
   });
   table.innerHTML = html+'</tbody>';
+  const sortTh = table.querySelector('th[data-sort="amount"]');
+  if (sortTh) sortTh.addEventListener('click', ()=>{
+    freelancersSortDir = freelancersSortDir==='asc' ? 'desc' : 'asc';
+    renderFreelancersPanel();
+  });
 }
 document.getElementById('freelancers-panel-search').addEventListener('input', renderFreelancersPanel);
 document.getElementById('freelancers-month-select').addEventListener('change', renderFreelancersPanel);

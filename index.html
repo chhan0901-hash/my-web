@@ -673,6 +673,10 @@
           </div>
         </div>
         <div class="summary-bar" id="employees-panel-summary"></div>
+        <div id="employees-panel-issues-wrap" style="display:none">
+          <h3 style="font-size:13px;margin:0 0 8px">확인 필요 사항 (직원 관련)</h3>
+          <ul class="issues" id="employees-panel-issues"></ul>
+        </div>
         <div class="chip-row" id="employees-lang-filter"></div>
         <input type="text" class="search-box" id="employees-panel-search" placeholder="이름으로 검색..." />
         <div class="table-scroll"><table class="datatable" id="employees-panel-table"></table></div>
@@ -691,10 +695,15 @@
           </div>
         </div>
         <div class="summary-bar" id="freelancers-panel-summary"></div>
+        <div id="freelancers-panel-issues-wrap" style="display:none">
+          <h3 style="font-size:13px;margin:0 0 8px">확인 필요 사항 (프리랜서 관련)</h3>
+          <ul class="issues" id="freelancers-panel-issues"></ul>
+        </div>
         <input type="text" class="search-box" id="freelancers-panel-search" placeholder="이름으로 검색..." />
         <div class="table-scroll"><table class="datatable" id="freelancers-panel-table"></table></div>
       </div>
     </section>
+
 
   </main>
 </div>
@@ -1265,6 +1274,7 @@ function autoSaveCurrentMonth(){
     freelancerRows: state.result.freelancerRows,
     employeeRows: state.result.employeeRows,
     issueCount: state.result.issues.length,
+    issues: state.result.issues,
     savedAt: new Date().toISOString(),
   };
   const ok = saveHistoryToStorage(hist);
@@ -1454,38 +1464,40 @@ document.getElementById('run-btn').addEventListener('click', async ()=>{
     const employeeRows = computeEmployeePerformance(employees, schedAgg, leave, holidayHours, businessDays);
 
     // 확인 필요 사항 자동 탐지
+    // category: 'freelancer'는 프리랜서 대시보드에, 'employee'는 직원 퍼포먼스 대시보드에
+    // 같이 표시된다(월별 이력에도 저장되어, 지난 달 것도 그 달을 선택하면 다시 볼 수 있음).
     const issues = [];
     const wcWorkers = new Set(Object.keys(wcAgg));
     const unmatchedWc = [...wcWorkers].filter(w=>!(w in freelancerRates));
     if (unmatchedWc.length){
-      issues.push({tag:'이름매칭', warn:true,
+      issues.push({tag:'이름매칭', warn:true, category:'freelancer',
         text:`WC_기준의 Worker명 중 프리랜서 명단과 매칭되지 않은 이름: ${unmatchedWc.join(', ')}`});
     }
     const zeroAmount = freelancerRows.filter(r=>r.amount===0 && (r.trWords||r.trChars||r.rvWords||r.rvChars||r.hours));
     if (zeroAmount.length){
-      issues.push({tag:'단가없음',
+      issues.push({tag:'단가없음', category:'freelancer',
         text:`단가 미계약으로 정산액이 0으로 표시된 프리랜서(분량은 정상 표시): ${zeroAmount.map(r=>r.name).join(', ')}`});
     }
     const noDataEmp = employeeRows.filter(r=>!r.hasData);
     if (noDataEmp.length){
-      issues.push({tag:'작업없음',
+      issues.push({tag:'작업없음', category:'employee',
         text:`이번 달 PM스케줄에서 작업을 찾지 못한 직원: ${noDataEmp.map(r=>r.name).join(', ')}`});
     }
     if (missingDates.length){
-      issues.push({tag:'근태공백', warn:true,
+      issues.push({tag:'근태공백', warn:true, category:'employee',
         text:`집계 구간 중 근태현황에 기록이 없는 날짜 ${missingDates.length}일: ${missingDates.join(', ')} — 이 기간에 연차/휴일근무가 있었다면 반영되지 않았을 수 있습니다.`});
     }
     parseWarnings.forEach(w=>{
-      issues.push({tag:'단가형식', warn:true, text:`${w.name}의 ${w.field}: ${w.warning}`});
+      issues.push({tag:'단가형식', warn:true, category:'freelancer', text:`${w.name}의 ${w.field}: ${w.warning}`});
     });
     const jpyNames = Object.entries(freelancerRates).filter(([,r])=>r.currency==='JPY').map(([n])=>n);
     if (jpyNames.length){
-      issues.push({tag:'통화',
+      issues.push({tag:'통화', category:'freelancer',
         text:`엔화(JPY) 단가로 등록된 프리랜서: ${jpyNames.join(', ')} — 정산액이 엔 단위로 계산됩니다.`});
     }
     if (allHourWarnings.length){
       const shown = allHourWarnings.slice(0,15);
-      issues.push({tag:'시간형식', warn:true,
+      issues.push({tag:'시간형식', warn:true, category:'employee',
         text:`PM 스케줄의 Hour열에서 숫자로 인식하지 못한 값 ${allHourWarnings.length}건(0으로 처리됨): `
           + shown.join(' · ') + (allHourWarnings.length>shown.length ? ` 외 ${allHourWarnings.length-shown.length}건` : '')});
     }
@@ -1624,13 +1636,15 @@ function getMonthData(monthKey){
     return {
       employeeRows: state.result.employeeRows, freelancerRows: state.result.freelancerRows,
       businessDays: state.result.businessDays, monthLabel: state.result.period.monthLabel,
+      issues: state.result.issues || [],
     };
   }
   const hist = loadHistory();
   const m = hist[monthKey];
   if (!m) return null;
   return { employeeRows: m.employeeRows, freelancerRows: m.freelancerRows,
-    businessDays: m.businessDays, monthLabel: m.monthLabel };
+    businessDays: m.businessDays, monthLabel: m.monthLabel,
+    issues: m.issues || [] }; // 이 기능 추가 전에 저장된 달은 issues가 없을 수 있음 -> 빈 배열로 처리
 }
 
 // <select>를 달 목록으로 채우면서, 이미 선택돼 있던 값이 여전히 유효하면 그대로 유지한다.
@@ -1645,6 +1659,20 @@ function populateMonthSelect(selectEl, months){
 
 let employeesLangFilter = null;
 
+// wrap 요소(div)와 목록(ul) id, 그리고 이슈 배열을 받아 해당 category(employee/freelancer)에
+// 해당하는 것만 걸러서 그린다. category 없이 저장된 옛날 이슈(과거 버전에서 저장된 달)는
+// 어느 쪽에도 표시하지 않는다(잘못 분류해서 보여주는 것보다 안전).
+function renderPanelIssues(wrapId, listId, issues, category){
+  const wrap = document.getElementById(wrapId);
+  const list = document.getElementById(listId);
+  const filtered = (issues||[]).filter(it=>it.category===category);
+  if (filtered.length===0){ wrap.style.display='none'; list.innerHTML=''; return; }
+  wrap.style.display = 'block';
+  list.innerHTML = filtered.map(it=>
+    `<li class="${it.warn?'warn':''}"><span class="tag">${it.tag}</span>${it.text}</li>`
+  ).join('');
+}
+
 function renderEmployeesPanel(){
   const months = getAvailableMonths();
   const emptyEl = document.getElementById('employees-panel-empty');
@@ -1654,13 +1682,15 @@ function renderEmployeesPanel(){
     sel.innerHTML=''; document.getElementById('employees-panel-summary').innerHTML='';
     document.getElementById('employees-lang-filter').innerHTML='';
     document.getElementById('employees-panel-table').innerHTML='';
+    renderPanelIssues('employees-panel-issues-wrap', 'employees-panel-issues', [], 'employee');
     return;
   }
   emptyEl.style.display = 'none';
   const selectedMonth = populateMonthSelect(sel, months);
   const data = getMonthData(selectedMonth);
   if (!data) return;
-  const {employeeRows, businessDays, monthLabel} = data;
+  const {employeeRows, businessDays, monthLabel, issues} = data;
+  renderPanelIssues('employees-panel-issues-wrap', 'employees-panel-issues', issues, 'employee');
 
   const langs = [...new Set(employeeRows.map(r=>r.lang).filter(Boolean))].sort();
   const chipRow = document.getElementById('employees-lang-filter');
@@ -1746,23 +1776,21 @@ function openPersonDetail(name){
 
 function renderPersonChart(container, series){
   const W = 640, H = 260, padL = 56, padR = 16, padT = 16, padB = 28;
-  const values = series.map(d=>d.value);
-  const minV = Math.min(0, ...values);
-  const maxV = Math.max(...values);
-  const range = (maxV - minV) || 1;
+  const Y_MAX = 10000; // 사람마다 규모가 달라 비교하기 어려웠던 문제를 없애기 위해 축을 고정
+  const clamp = v => Math.min(Math.max(v,0), Y_MAX);
   const plotW = W - padL - padR, plotH = H - padT - padB;
   const baseY = padT + plotH;
   const xAt = i => series.length<=1 ? padL : padL + (i/(series.length-1))*plotW;
-  const yAt = v => padT + plotH - ((v-minV)/range)*plotH;
+  const yAt = v => padT + plotH - (clamp(v)/Y_MAX)*plotH;
 
   const linePts = series.map((d,i)=>`${xAt(i)},${yAt(d.value)}`).join(' ');
   const areaPts = `${xAt(0)},${baseY} ` + linePts + ` ${xAt(series.length-1)},${baseY}`;
-  const lastVal = values[values.length-1];
+  const lastVal = series[series.length-1].value;
   const labelEvery = Math.max(1, Math.ceil(series.length/8));
 
   let svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">`;
   for (let i=0;i<=4;i++){
-    const v = minV + range*i/4;
+    const v = Y_MAX*i/4; // 0 / 2,500 / 5,000 / 7,500 / 10,000 고정 눈금
     const yy = yAt(v);
     svg += `<line x1="${padL}" y1="${yy}" x2="${W-padR}" y2="${yy}" stroke="var(--border)" stroke-width="1"/>`;
     svg += `<text x="${padL-8}" y="${yy+3}" font-size="10" text-anchor="end" fill="var(--ink-faint)">${Math.round(v).toLocaleString()}</text>`;
@@ -1771,7 +1799,9 @@ function renderPersonChart(container, series){
   svg += `<line x1="${padL}" y1="${yAt(lastVal)}" x2="${W-padR}" y2="${yAt(lastVal)}" stroke="var(--accent)" stroke-width="1" stroke-dasharray="3,3"/>`;
   svg += `<polyline points="${linePts}" fill="none" stroke="var(--accent)" stroke-width="2"/>`;
   series.forEach((d,i)=>{
-    svg += `<circle cx="${xAt(i)}" cy="${yAt(d.value)}" r="3" fill="var(--accent)"><title>${d.month}: ${fmtNum(d.value)}</title></circle>`;
+    const capped = d.value > Y_MAX;
+    const label = capped ? `${fmtNum(Y_MAX,0)}+ (실제 ${fmtNum(d.value)})` : fmtNum(d.value);
+    svg += `<circle cx="${xAt(i)}" cy="${yAt(d.value)}" r="3" fill="var(--accent)"><title>${d.month}: ${label}</title></circle>`;
     if (i % labelEvery === 0 || i===series.length-1){
       svg += `<text x="${xAt(i)}" y="${H-8}" font-size="10" text-anchor="middle" fill="var(--ink-faint)">${d.month}</text>`;
     }
@@ -1799,13 +1829,15 @@ function renderFreelancersPanel(){
     emptyEl.style.display = 'block';
     sel.innerHTML=''; document.getElementById('freelancers-panel-summary').innerHTML='';
     document.getElementById('freelancers-panel-table').innerHTML='';
+    renderPanelIssues('freelancers-panel-issues-wrap', 'freelancers-panel-issues', [], 'freelancer');
     return;
   }
   emptyEl.style.display = 'none';
   const selectedMonth = populateMonthSelect(sel, months);
   const data = getMonthData(selectedMonth);
   if (!data) return;
-  const {freelancerRows, monthLabel} = data;
+  const {freelancerRows, monthLabel, issues} = data;
+  renderPanelIssues('freelancers-panel-issues-wrap', 'freelancers-panel-issues', issues, 'freelancer');
 
   const filterText = document.getElementById('freelancers-panel-search').value.trim().toLowerCase();
   const rows = filterText ? freelancerRows.filter(r=>r.name.toLowerCase().includes(filterText)) : freelancerRows;

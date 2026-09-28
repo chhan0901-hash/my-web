@@ -90,6 +90,8 @@
     font-weight:700;
     margin-bottom:8px;
   }
+  .server-detail{ font-size:10.5px; color:var(--ink-faint); margin-bottom:6px; word-break:keep-all; }
+  .server-detail.bad{ color:var(--warn); font-weight:600; }
   .server-status.on{ color:var(--ok); }
   .server-status.off{ color:var(--ink-faint); }
   .content{
@@ -317,6 +319,25 @@
   table.datatable tbody tr:hover{ background:var(--accent-soft); }
   table.datatable tr.nodata{ color:var(--ink-faint); font-style:italic; }
   table.datatable tr.jpy{ background:var(--jpy-soft); }
+
+  /* 실제 데이터 비교 표 */
+  table.datatable.compare th:last-child, table.datatable.compare td:last-child{ position:static; box-shadow:none; }
+  table.datatable.compare td:nth-child(3), table.datatable.compare td:nth-child(4),
+  table.datatable.compare th:nth-child(3), table.datatable.compare th:nth-child(4){ text-align:left; }
+  table.datatable.compare th{ white-space:normal; line-height:1.25; vertical-align:bottom; }
+  table.datatable.compare td.note{ white-space:normal; text-align:left; min-width:220px; max-width:320px; font-size:11.5px; color:var(--ink-soft); }
+  table.datatable.compare tr.cmp-manual td{ background:#FFF8EC; }
+  table.datatable.compare tr.cmp-missing td{ background:#FFF8EC; color:var(--ink-faint); font-style:italic; }
+  table.datatable.compare tr.cmp-band td{ position:static; box-shadow:none; background:var(--accent-soft); color:var(--accent); font-weight:700; text-align:left; font-size:12px; padding:7px 8px; }
+  table.datatable.compare tbody tr.cmp-auto:hover td, table.datatable.compare tbody tr.cmp-manual:hover td{ filter:brightness(0.97); }
+  table.datatable.compare td.cell-warn{ background:#FFE0B2 !important; }
+  table.datatable.compare td.diff-bad{ background:#FFC7CE !important; color:#9C0006; font-weight:700; }
+  .cmp-legend{ font-size:11.5px; color:var(--ink-soft); margin-bottom:8px; }
+  .cmp-swatch{ display:inline-block; width:12px; height:12px; border:1px solid var(--border); vertical-align:-2px; margin:0 4px 0 12px; }
+  .cmp-swatch:first-child{ margin-left:0; }
+  .cmp-swatch.bad{ background:#FFC7CE; } .cmp-swatch.warn{ background:#FFE0B2; } .cmp-swatch.manual{ background:#FFF8EC; }
+  .cmp-notes{ font-size:12px; color:var(--ink-soft); margin-bottom:12px; }
+  .cmp-notes div{ margin-bottom:3px; }
   .table-scroll{ max-height:560px; overflow:auto; border:1px solid var(--border); border-radius:2px; }
 
   .name-link{
@@ -525,8 +546,15 @@
       <button class="nav-link" data-panel="panel-freelancers">프리랜서</button>
     </div>
 
+    <div class="nav-group">
+      <div class="nav-group-title">데이터 비교</div>
+      <button class="nav-link" data-panel="panel-compare">실제 데이터 비교</button>
+    </div>
+
     <div class="sidebar-foot">
       <div id="server-status" class="server-status off">○ 이 브라우저에만 저장 (로컬 전용)</div>
+      <div id="server-detail" class="server-detail"></div>
+      <div id="app-version" class="server-detail"></div>
       모든 계산은 이 브라우저 안에서만 이루어지고, 파일은 어디로도 업로드되지 않습니다.
     </div>
   </nav>
@@ -714,6 +742,61 @@
       </div>
     </section>
 
+
+    <!-- 데이터 비교 > 실제 데이터 비교 -->
+    <section class="panel" id="panel-compare">
+      <div class="panel-head"><h2>실제 데이터 비교</h2><span class="hint">자동 계산 vs 수동 계산 · 직원 퍼포먼스</span></div>
+      <div class="panel-body">
+        <p class="muted" style="margin:0 0 14px">도구에서 내보낸 <b>자동 계산 엑셀</b>을 기준으로, 사람이 직접 정리한 <b>수동 계산 엑셀</b>의 같은 달 숫자를 아래에 붙여 보여줍니다. 파일은 이 브라우저 안에서만 읽고 어디로도 전송되지 않습니다.</p>
+        <div class="filegrid">
+          <div class="fileslot required">
+            <label class="slot-title">① 자동 계산 엑셀</label>
+            <span class="slot-desc">대시보드 "직원 퍼포먼스"에서 내보낸 직원퍼포먼스_2026-08.xlsx (또는 여러 달이 든 정산_퍼포먼스_이력 엑셀)</span>
+            <input type="file" id="cmp-file-auto" accept=".xlsx,.xls" />
+            <div class="picked" id="cmp-picked-auto"></div>
+          </div>
+          <div class="fileslot required">
+            <label class="slot-title">② 수동 계산 엑셀</label>
+            <span class="slot-desc">Linguist_capa_2026_End기준.xlsx (직원별 시트, 월별 블록)</span>
+            <input type="file" id="cmp-file-manual" accept=".xlsx,.xls" />
+            <div class="picked" id="cmp-picked-manual"></div>
+          </div>
+        </div>
+        <div class="row" style="margin-top:16px">
+          <div class="field">
+            <label for="cmp-month">비교할 달</label>
+            <select id="cmp-month" style="min-width:120px" disabled></select>
+          </div>
+          <div class="field">
+            <label for="cmp-threshold">빨간색 표시 기준 (기준/day 차이)</label>
+            <input type="number" id="cmp-threshold" value="500" min="0" step="50" style="width:120px" />
+          </div>
+          <div class="field">
+            <label>&nbsp;</label>
+            <button type="button" class="primary" id="cmp-run-btn">비교하기</button>
+          </div>
+        </div>
+        <div id="cmp-status" class="muted" style="margin-top:10px"></div>
+
+        <div id="cmp-results" style="display:none;margin-top:18px">
+          <div class="summary-bar" id="cmp-summary"></div>
+          <div id="cmp-flag-wrap" style="display:none;margin-bottom:12px">
+            <div class="muted" style="margin-bottom:6px" id="cmp-flag-title"></div>
+            <div class="chip-row" id="cmp-flag-chips"></div>
+          </div>
+          <div id="cmp-notes" class="cmp-notes"></div>
+          <div class="row" style="margin-bottom:10px">
+            <div class="field">
+              <label for="cmp-search">이름으로 필터</label>
+              <input type="text" id="cmp-search" class="search-box" style="margin-bottom:0" placeholder="이름을 입력하면 자동·수동 숫자가 함께 보입니다" />
+            </div>
+            <div class="field"><label>&nbsp;</label><button type="button" class="secondary" id="cmp-search-clear">필터 해제</button></div>
+          </div>
+          <div class="cmp-legend"><span class="cmp-swatch bad"></span>기준/day 차이가 기준 이상 <span class="cmp-swatch warn"></span>자동과 언어/기준이 다름 <span class="cmp-swatch manual"></span>수동 계산 행</div>
+          <div class="table-scroll" style="max-height:640px"><table class="datatable compare" id="cmp-table"></table></div>
+        </div>
+      </div>
+    </section>
 
   </main>
 </div>
@@ -1219,30 +1302,62 @@ function saveHistoryToStorage(hist){
 }
 
 // ---- server.js 연동 (있으면 자동으로 붙고, 없으면 조용히 무시됨) ----
+// 이 index.html의 버전 표시 — 파일을 바꿀 때마다 이 값을 같이 바꾼다.
+// 화면 왼쪽 아래에 보이는 버전이 방금 받은 파일의 버전과 다르면, 브라우저나 서버가 예전 파일을 쓰고 있는 것이다.
+const APP_VERSION = '2026-09-28 · 실제 데이터 비교';
+let syncFailReason = '';   // 동기화가 안 될 때 그 이유(화면에 표시)
+let pushError = '';        // 서버로 저장을 올리다 실패했을 때 그 이유
+let lastSyncAt = null;     // 서버에서 마지막으로 데이터를 받아온 시각
+
 async function pullHistoryFromServer(){
+  if (location.protocol === 'file:'){
+    syncFailReason = '파일을 직접 열었습니다 — 서버 주소(http://…:8787)로 접속해야 동기화됩니다';
+    return false;
+  }
   try{
     const res = await fetch('/api/history', {cache:'no-store'});
-    if (!res.ok) return false;
+    if (res.status === 404){ syncFailReason = '이 주소에는 동기화 서버(server.js)가 없습니다'; return false; }
+    if (res.status === 401){ syncFailReason = '로그인이 필요합니다(아이디/비밀번호)'; return false; }
+    if (!res.ok){ syncFailReason = `서버 응답 오류(코드 ${res.status})`; return false; }
     const data = await res.json();
     historyCache = data;
     try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(data)); }catch(e){}
+    lastSyncAt = new Date();
+    syncFailReason = '';
     return true;
-  } catch(e){ return false; }
+  } catch(e){
+    syncFailReason = '서버에 연결할 수 없습니다(서버가 꺼졌거나 주소가 다릅니다)';
+    return false;
+  }
 }
 async function pushHistoryToServer(hist){
   if (!serverSyncOn) return;
   try{
-    await fetch('/api/history', {
+    const res = await fetch('/api/history', {
       method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(hist),
     });
-  } catch(e){ console.warn('서버 동기화 실패(오프라인이거나 서버가 꺼졌을 수 있음):', e); }
+    pushError = res.ok ? '' : `서버에 저장하지 못했습니다(코드 ${res.status}) — 다른 사람에게 보이지 않습니다`;
+  } catch(e){
+    pushError = '서버에 저장하지 못했습니다(연결 끊김) — 다른 사람에게 보이지 않습니다';
+    console.warn('서버 동기화 실패(오프라인이거나 서버가 꺼졌을 수 있음):', e);
+  }
+  setServerStatus(serverSyncOn);
 }
 function setServerStatus(on){
   serverSyncOn = on;
   const el = document.getElementById('server-status');
+  const detail = document.getElementById('server-detail');
+  const ver = document.getElementById('app-version');
+  if (ver) ver.textContent = `버전 ${APP_VERSION} · ${location.host || '파일로 직접 열림'}`;
   if (!el) return;
-  el.textContent = on ? '● 서버와 동기화 중 (여러 명이 같이 봄)' : '○ 이 브라우저에만 저장 (로컬 전용)';
+  const t = lastSyncAt ? [lastSyncAt.getHours(), lastSyncAt.getMinutes(), lastSyncAt.getSeconds()].map(n=>String(n).padStart(2,'0')).join(':') : '';
+  el.textContent = on ? `● 서버와 동기화 중 (마지막 확인 ${t})` : '○ 이 브라우저에만 저장 (로컬 전용)';
   el.className = on ? 'server-status on' : 'server-status off';
+  if (detail){
+    const msg = on ? pushError : syncFailReason;
+    detail.textContent = msg;
+    detail.className = 'server-detail' + (msg ? ' bad' : '');
+  }
 }
 function refreshAllHistoryViews(){
   renderHistoryPanel();
@@ -1409,6 +1524,7 @@ document.getElementById('holiday-list').addEventListener('change', updatePeriodD
   updatePeriodDerived();
 })();
 renderHistoryPanel();
+setServerStatus(false); // 버전 표시를 먼저 그린다
 initServerSync();
 
 function log(msg, isErr){
@@ -2204,6 +2320,372 @@ document.getElementById('export-btn').addEventListener('click', ()=>{
 
   XLSX.writeFile(wb, `${period.monthLabel}_정산_퍼포먼스.xlsx`);
 });
+
+/* ========================================================================
+   데이터 비교 > 실제 데이터 비교
+   자동 계산 엑셀(도구에서 내보낸 파일)과 수동 계산 엑셀(Linguist_capa)의 같은 달 숫자를
+   한 표에 보여준다: 자동 행은 모두 위에, 수동 행은 모두 아래에 놓고, 이름으로 필터하면
+   그 사람의 자동/수동 숫자가 위아래로 함께 보인다. 기준/day(수동은 Char/day) 차이가
+   기준값 이상이면 두 칸을 빨간색으로 칠한다.
+   ======================================================================== */
+
+const cmp = {
+  auto: null,          // {fileName, months:{'2026-08':[행...]}, monthKeys:[...]}
+  manualWb: null,      // 필요한 시트만 읽은 SheetJS 통합문서
+  manualFileName: '',
+  manualSheetNames: [],// 수동 파일의 전체 시트 이름(시트만 읽어 본 것)
+  month: null,         // 지금 비교 중인 달 'YYYY-MM'
+  extracted: {},       // 달별로 수동 시트에서 뽑아 둔 결과 캐시 {'2026-08': [{auto, manual, missing}, ...]}
+};
+
+function normName(s){ return String(s===null||s===undefined?'':s).replace(/\s+/g,'').toLowerCase(); }
+function esc(v){
+  return String(v===null||v===undefined?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function cmpNum(v){
+  if (v===null || v===undefined || v==='') return null;
+  if (typeof v === 'number') return isFinite(v) ? v : null;
+  const n = parseFloat(String(v).replace(/,/g,''));
+  return isNaN(n) ? null : n;
+}
+// 큰 엑셀(수십 MB)을 type:'array'로 읽으면 매우 느려서(십수 초), 바이너리 문자열로 바꿔 읽는다(몇 초 → 1~2초).
+function u8ToBinary(u8){
+  const out = []; const CH = 0x8000;
+  for (let i=0; i<u8.length; i+=CH) out.push(String.fromCharCode.apply(null, u8.subarray(i, i+CH)));
+  return out.join('');
+}
+function readFileBuffer(file){
+  return new Promise((resolve, reject)=>{
+    const fr = new FileReader();
+    fr.onload = e=> resolve(new Uint8Array(e.target.result));
+    fr.onerror = ()=> reject(fr.error);
+    fr.readAsArrayBuffer(file);
+  });
+}
+
+/* ---- 자동 계산 엑셀 읽기 ---- */
+function parseAutoCompareWorkbook(wb, fileName){
+  let picked = null;
+  for (const sn of wb.SheetNames){
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, raw:true, defval:null});
+    const hi = rows.findIndex(r=> r && r.some(c=>normHeader(c)==='이름') && r.some(c=>normHeader(c)==='TRWord'));
+    if (hi>=0){ picked = {sn, rows, hi}; break; }
+  }
+  if (!picked) throw new Error('자동 계산 엑셀에서 "이름 / TR Word …" 머리글이 있는 시트를 찾지 못했습니다. 대시보드에서 "엑셀로 내보내기"로 만든 파일인지 확인해 주세요.');
+
+  const H = picked.rows[picked.hi];
+  const col = (...cands)=>{
+    for (const c of cands){ const i = H.findIndex(x=>normHeader(x)===normHeader(c)); if (i>=0) return i; }
+    return -1;
+  };
+  const C = {
+    month:col('월'), name:col('이름'), lang:col('언어'), basis:col('기준'),
+    trW:col('TR Word'), trC:col('TR Char'), trH:col('TR Hour'),
+    rvW:col('RV Word'), rvC:col('RV Char'), rvH:col('RV Hour'),
+    prW:col('PR Word'), prC:col('PR Char'), prH:col('PR Hour'),
+    biz:col('영업일'), holi:col('휴일근무','휴일근무(일)'), leave:col('휴무','휴무(일)'),
+    total:col('환산분량'), perDay:col('기준/day'),
+  };
+  // 한 달짜리 내보내기 파일에는 '월' 열이 없다 -> 시트 이름이나 '조회 조건' 시트에서 달을 알아낸다.
+  let singleKey = null;
+  if (C.month < 0){
+    let m = picked.sn.match(/(\d{4})-(\d{2})/);
+    if (!m && wb.Sheets['조회 조건']){
+      const info = XLSX.utils.sheet_to_json(wb.Sheets['조회 조건'], {header:1, raw:true, defval:null});
+      const row = info.find(r=>r && normHeader(r[0])==='대상월');
+      if (row) m = String(row[1]).match(/(\d{4})-(\d{2})/);
+    }
+    if (!m) throw new Error('자동 계산 엑셀이 어느 달 것인지 알 수 없습니다(시트 이름이나 "조회 조건" 시트에 2026-08 같은 표기가 필요합니다).');
+    singleKey = `${m[1]}-${m[2]}`;
+  }
+  const months = {};
+  const monthKeys = [];
+  for (let r = picked.hi+1; r < picked.rows.length; r++){
+    const row = picked.rows[r];
+    if (!row || row[C.name]===null || row[C.name]===undefined || String(row[C.name]).trim()==='') continue;
+    const key = C.month>=0 ? String(row[C.month]).trim() : singleKey;
+    if (!/^\d{4}-\d{2}$/.test(key)) continue;
+    const g = (k)=> C[k]>=0 ? cmpNum(row[C[k]]) : null;
+    const item = {
+      name: String(row[C.name]).trim(), lang: C.lang>=0 && row[C.lang]!==null ? String(row[C.lang]).trim() : '',
+      basis: C.basis>=0 && row[C.basis]!==null ? String(row[C.basis]).trim() : '',
+      trW:g('trW'), trC:g('trC'), trH:g('trH'), rvW:g('rvW'), rvC:g('rvC'), rvH:g('rvH'), prW:g('prW'), prC:g('prC'), prH:g('prH'),
+      biz:g('biz'), holi:g('holi'), leave:g('leave'), total:g('total'), perDay:g('perDay'),
+    };
+    if (!months[key]){ months[key] = []; monthKeys.push(key); }
+    months[key].push(item);
+  }
+  if (!monthKeys.length) throw new Error('자동 계산 엑셀에서 직원 행을 찾지 못했습니다.');
+  monthKeys.sort();
+  return {fileName, months, monthKeys};
+}
+
+/* ---- 수동 계산 엑셀(Linguist_capa) 읽기 ----
+   시트마다 열 구성이 조금씩 달라서(예: 휴일근무 열이 없거나, '전체처리분량'이 'Working days'로 적힌 시트)
+   열 위치가 아니라 머리글 이름으로 찾는다. 한 시트에는 월별 블록이 세로로 이어져 있고,
+   각 블록의 첫 줄에 영업일·휴일근무·휴무·전체처리분량·Char/day가, 아래 줄들에 TR/RV/PR × Word/Char/Hourly 물량이 있다. */
+function extractManualForMonth(ws, sheetName, targetYear, targetMonth){
+  if (!ws || !ws['!ref']) return {missing:'빈 시트'};
+  const rng = XLSX.utils.decode_range(ws['!ref']);
+  const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:null});
+  const R0 = rng.s.r, C0 = rng.s.c;
+  const cell = (r,c)=>{ const row = rows[r-R0]; return row ? row[c-C0] : null; };
+  const lastR = R0 + rows.length - 1;
+
+  // 머리글 행 찾기
+  let hr = -1;
+  for (let r=R0; r<=Math.min(lastR, R0+10); r++){
+    const hs = []; for (let c=C0;c<=rng.e.c;c++) hs.push(normHeader(cell(r,c)));
+    if (hs.includes('WorkType') && hs.includes('Countedby')){ hr = r; break; }
+  }
+  if (hr<0) return {missing:'머리글 행(Work Type / Counted by)을 찾지 못함'};
+  const hc = {};
+  for (let c=C0;c<=rng.e.c;c++){ const k = normHeader(cell(hr,c)); if (k && !(k in hc)) hc[k] = c; }
+  const K = {
+    name:hc['Name'], type:hc['WorkType'], src:hc['Source'], tgt:hc['Target'], unit:hc['Countedby'], amt:hc['Amount'],
+    biz:hc['영업일'], holi:hc['휴일근무'], leave:hc['휴무'],
+    work: hc['전체처리분량']!==undefined ? hc['전체처리분량'] : hc['Workingdays'],
+    perDay:hc['Char/day'], note:hc['비고'],
+  };
+  if (K.unit===undefined || K.amt===undefined || K.type===undefined) return {missing:'필요한 열(Counted by / Amount)을 찾지 못함'};
+
+  // 월별 블록 찾기 (A열 라벨: "26년\n8월\n\nBRP ...")
+  const blocks = [];
+  for (let r=hr+1; r<=lastR; r++){
+    const v = cell(r, 0);
+    if (typeof v === 'string'){
+      const m = v.match(/(\d+)\s*년\s*(\d+)\s*월/);
+      if (m){ let yy = +m[1]; if (yy<100) yy += 2000; blocks.push({r, year:yy, month:+m[2], origMonth:+m[2], repaired:false, label:v.replace(/\s+/g,' ').trim()}); }
+    }
+  }
+  if (!blocks.length) return {missing:'월별 블록(예: "26년 8월")을 찾지 못함'};
+  // 라벨 보정: 같은 달이 두 번 적혀 있고 그 다음이 +2달이면 두 번째는 빠진 다음 달의 오기로 본다(예: 7월, 7월, 9월)
+  for (let i=1;i<blocks.length;i++){
+    const prev = blocks[i-1].month, cur = blocks[i].month;
+    const nextOk = (i===blocks.length-1) ? cur<12 : blocks[i+1].month === prev+2;
+    if (cur===prev && nextOk){ blocks[i].month = prev+1; blocks[i].repaired = true; }
+  }
+  const cands = blocks.map((b,i)=>({b,i})).filter(x=>x.b.month===targetMonth);
+  if (!cands.length) return {missing:`${targetMonth}월 블록 없음`};
+
+  const readBlock = ({b,i})=>{
+    const endR = i+1<blocks.length ? blocks[i+1].r-1 : lastR;
+    const g = (c)=> c===undefined ? null : cell(b.r, c);
+    const f = {trW:null,trC:null,trH:null,rvW:null,rvC:null,rvH:null,prW:null,prC:null,prH:null};
+    let cur = null;
+    for (let r=b.r; r<=endR; r++){
+      const t = cell(r, K.type);
+      if (t!==null && String(t).trim()!=='') cur = String(t).trim().toUpperCase();
+      const u = cell(r, K.unit);
+      if (u===null || u===undefined || !cur || !['TR','RV','PR'].includes(cur)) continue;
+      const us = String(u).trim().toLowerCase();
+      const unit = us.startsWith('word') ? 'W' : us.startsWith('char') ? 'C' : us.startsWith('hour') ? 'H' : null;
+      const v = cmpNum(cell(r, K.amt));
+      if (!unit || v===null) continue;
+      const key = cur.toLowerCase()+unit;
+      f[key] = (f[key]||0) + v;
+    }
+    const firstName = g(K.name);
+    const item = {
+      row:b.r+1, year:b.year, month:b.month, origMonth:b.origMonth, repaired:b.repaired, label:b.label, sheet:sheetName,
+      nameMatch: normName(firstName)===normName(sheetName), firstName: firstName===null?'':String(firstName).replace(/\s+/g,' ').trim(),
+      lang: g(K.tgt)===null ? '' : String(g(K.tgt)).trim(),
+      biz:cmpNum(g(K.biz)), holi: K.holi===undefined ? null : cmpNum(g(K.holi)), leave:cmpNum(g(K.leave)),
+      total:cmpNum(g(K.work)), perDay:cmpNum(g(K.perDay)),
+      note: g(K.note)===null ? '' : String(g(K.note)).replace(/\s+/g,' ').trim(),
+      ...f,
+    };
+    item.hasData = Object.values(f).some(v=>v!==null && v!==0) || (item.perDay!==null && item.perDay!==0);
+    return item;
+  };
+  let list = cands.map(readBlock);
+  const nCands = list.length;
+  const named = list.filter(x=>x.nameMatch);          if (named.length) list = named;      // 시트 이름과 다른 이름이 적힌 잔재 블록 제외
+  const sameYear = list.filter(x=>x.year===targetYear); if (sameYear.length) list = sameYear;
+  const withData = list.filter(x=>x.hasData);            if (withData.length) list = withData;
+  const pick = list[0];
+
+  const warns = [];
+  if (pick.year !== targetYear) warns.push(`블록 라벨이 ${pick.year}년 ${pick.month}월로 되어 있음(비교 달은 ${targetYear}년)`);
+  if (pick.repaired) warns.push(`라벨이 "${pick.origMonth}월"로 중복 표기되어 ${pick.month}월로 추정`);
+  if (!pick.nameMatch) warns.push(`블록에 적힌 이름이 "${pick.firstName}"로 시트명과 다름`);
+  if (nCands>1) warns.push(`${targetMonth}월 블록이 ${nCands}개 있어 그중 하나(${pick.row}행)를 사용`);
+  pick.warns = warns;
+  // 기준: 비고에 '워드 기준'이 있거나 언어가 KO면 Word/day, 아니면 Char/day
+  pick.basis = (/워드/.test(pick.note) || pick.lang.toUpperCase()==='KO') ? 'Word/day' : 'Char/day';
+  return pick;
+}
+
+/* ---- 비교 결과 만들기 ---- */
+function buildComparison(){
+  const [yStr, mStr] = cmp.month.split('-');
+  const year = +yStr, month = +mStr;
+  const autoRows = cmp.auto.months[cmp.month] || [];
+  const threshold = Math.max(0, cmpNum(document.getElementById('cmp-threshold').value) ?? 500);
+  const autoNorms = new Set(autoRows.map(r=>normName(r.name)));
+
+  if (!cmp.extracted[cmp.month]){
+    const sheetByNorm = {};
+    cmp.manualSheetNames.forEach(n=>{ sheetByNorm[normName(n)] = n; });
+    cmp.extracted[cmp.month] = autoRows.map(a=>{
+      const sn = sheetByNorm[normName(a.name)];
+      let manual = null, missing = null;
+      if (!sn) missing = '수동 파일에 이 이름의 시트가 없습니다';
+      else if (!cmp.manualWb.Sheets[sn]) missing = '수동 시트를 읽지 못했습니다';
+      else {
+        const res = extractManualForMonth(cmp.manualWb.Sheets[sn], sn, year, month);
+        if (res.missing) missing = `수동 시트 "${sn}": ${res.missing}`; else manual = res;
+      }
+      return {auto:a, manual, missing};
+    });
+  }
+  const entries = cmp.extracted[cmp.month].map(x=>{
+    const diff = (x.manual && x.manual.perDay!==null && x.auto.perDay!==null) ? x.manual.perDay - x.auto.perDay : null;
+    return {...x, diff, bad: diff!==null && Math.abs(diff) >= threshold};
+  });
+  const manualOnly = cmp.manualSheetNames.filter(n=>!autoNorms.has(normName(n)));
+  return {entries, threshold, manualOnly, year, month};
+}
+
+function fmtCmp(n, d){ return (n===null || n===undefined) ? '' : n.toLocaleString('ko-KR', {maximumFractionDigits: d===undefined?2:d}); }
+
+function renderComparison(){
+  if (!cmp.auto || !cmp.manualWb || !cmp.month) return;
+  const res = buildComparison();
+  const {entries, threshold, manualOnly} = res;
+  const q = normName(document.getElementById('cmp-search').value);
+  const shown = q ? entries.filter(e=>normName(e.auto.name).includes(q)) : entries;
+
+  // 요약
+  const withManual = entries.filter(e=>e.manual).length;
+  const flagged = entries.filter(e=>e.bad).sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff));
+  const noManual = entries.filter(e=>!e.manual);
+  document.getElementById('cmp-summary').innerHTML =
+    `<div>비교 달: <b>${cmp.month}</b></div>
+     <div>자동 직원: <b>${entries.length}명</b> · 수동 데이터 있음: <b>${withManual}명</b></div>
+     <div>기준/day 차이 ${fmtCmp(threshold,0)} 이상: <b style="color:${flagged.length?'#9C0006':'inherit'}">${flagged.length}명</b></div>`;
+
+  // 빨간 칠 대상 칩 (누르면 그 사람만 필터)
+  const wrap = document.getElementById('cmp-flag-wrap');
+  if (flagged.length){
+    wrap.style.display = 'block';
+    document.getElementById('cmp-flag-title').textContent = `차이가 ${fmtCmp(threshold,0)} 이상인 사람 (누르면 그 사람의 숫자만 표시) · 수동 − 자동`;
+    document.getElementById('cmp-flag-chips').innerHTML = flagged.map(e=>
+      `<button type="button" class="chip" data-name="${esc(e.auto.name)}">${esc(e.auto.name)} ${e.diff>0?'+':''}${fmtCmp(e.diff,0)}</button>`).join('');
+    document.querySelectorAll('#cmp-flag-chips .chip').forEach(ch=>ch.addEventListener('click', ()=>{
+      document.getElementById('cmp-search').value = ch.dataset.name; renderComparison();
+    }));
+  } else { wrap.style.display = 'none'; }
+
+  // 참고 사항
+  const notes = [];
+  if (noManual.length) notes.push(`수동 데이터를 찾지 못한 직원 ${noManual.length}명: ` + noManual.map(e=>`${esc(e.auto.name)}(${esc(e.missing)})`).join(' · '));
+  const warned = entries.filter(e=>e.manual && e.manual.warns.length);
+  if (warned.length) notes.push(`수동 시트에 확인이 필요한 표기가 있는 직원 ${warned.length}명: ` + warned.map(e=>`${esc(e.auto.name)}(${esc(e.manual.warns.join(' / '))})`).join(' · '));
+  if (manualOnly.length){
+    const cap = 30;
+    notes.push(`수동 파일에만 있는 시트 ${manualOnly.length}개(직원 목록에 없어 비교 제외): ` + manualOnly.slice(0,cap).map(esc).join(', ') + (manualOnly.length>cap ? ` 외 ${manualOnly.length-cap}개` : ''));
+  }
+  document.getElementById('cmp-notes').innerHTML = notes.map(n=>`<div>· ${n}</div>`).join('');
+
+  // 표
+  const headers = ['이름','구분','언어','기준','TR Word','TR Char','TR Hour','RV Word','RV Char','RV Hour','PR Word','PR Char','PR Hour',
+                   '영업일','휴일근무','휴무','환산분량','기준/day<br>(수동은 Char/day)','차이<br>(수동−자동)','비고 / 출처'];
+  const NCOL = headers.length;
+  const numCells = (r)=> ['trW','trC','trH','rvW','rvC','rvH','prW','prC','prH','biz','holi','leave','total']
+      .map(k=>`<td class="mono">${fmtCmp(r[k], k==='total'?1:2)}</td>`).join('');
+  let html = '<thead><tr>'+headers.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>';
+
+  if (!shown.length){
+    html += `<tr><td colspan="${NCOL}" class="muted" style="text-align:left;padding:12px 8px">일치하는 이름이 없습니다.</td></tr>`;
+  } else {
+    html += `<tr class="cmp-band"><td colspan="${NCOL}">▼ 자동 계산 — ${esc(cmp.auto.fileName)}</td></tr>`;
+    shown.forEach(e=>{
+      const a = e.auto;
+      html += `<tr class="cmp-auto"><td>${esc(a.name)}</td><td>자동</td><td>${esc(a.lang)}</td><td>${esc(a.basis)}</td>${numCells(a)}
+        <td class="mono${e.bad?' diff-bad':''}"><b>${fmtCmp(a.perDay,1)}</b></td><td></td><td class="note"></td></tr>`;
+    });
+    html += `<tr class="cmp-band"><td colspan="${NCOL}">▼ 수동 계산 — ${esc(cmp.manualFileName)}</td></tr>`;
+    shown.forEach(e=>{
+      const a = e.auto, m = e.manual;
+      if (!m){
+        html += `<tr class="cmp-missing"><td>${esc(a.name)}</td><td>수동</td><td colspan="${NCOL-2}">${esc(e.missing)}</td></tr>`;
+        return;
+      }
+      const langDiff = a.lang && m.lang && a.lang.toUpperCase()!==m.lang.toUpperCase();
+      const basisDiff = a.basis && m.basis && a.basis!==m.basis;
+      const noteParts = [];
+      if (m.warns.length) noteParts.push('⚠ ' + esc(m.warns.join(' / ')));
+      if (m.note) noteParts.push(esc(m.note));
+      noteParts.push(`시트 ${esc(m.sheet)} · ${m.row}행`);
+      html += `<tr class="cmp-manual"><td>${esc(a.name)}</td><td>수동</td>
+        <td class="${langDiff?'cell-warn':''}" ${langDiff?`title="자동은 ${esc(a.lang)}"`:''}>${esc(m.lang)}</td>
+        <td class="${basisDiff?'cell-warn':''}" ${basisDiff?`title="자동은 ${esc(a.basis)}"`:''}>${esc(m.basis)}</td>${numCells(m)}
+        <td class="mono${e.bad?' diff-bad':''}"><b>${fmtCmp(m.perDay,1)}</b></td>
+        <td class="mono${e.bad?' diff-bad':''}">${e.diff===null?'':(e.diff>0?'+':'')+fmtCmp(e.diff,1)}</td>
+        <td class="note">${noteParts.join('<br>')}</td></tr>`;
+    });
+  }
+  document.getElementById('cmp-table').innerHTML = html+'</tbody>';
+  document.getElementById('cmp-results').style.display = 'block';
+}
+
+/* ---- 파일을 읽어서 비교 시작 ---- */
+async function runComparison(autoU8, autoName, manualU8, manualName, setStatus){
+  const setter = setStatus || (()=>{});
+  const say = async (t)=>{ setter(t); await new Promise(r=>setTimeout(r,30)); };
+  await say('자동 계산 엑셀을 읽는 중...');
+  const autoWb = XLSX.read(u8ToBinary(autoU8), {type:'binary', raw:true});
+  cmp.auto = parseAutoCompareWorkbook(autoWb, autoName);
+
+  await say('수동 계산 엑셀의 시트 목록을 읽는 중... (파일이 커서 몇 초 걸릴 수 있습니다)');
+  const manualBin = u8ToBinary(manualU8);
+  const names = XLSX.read(manualBin, {type:'binary', bookSheets:true}).SheetNames;
+  const allAutoNorms = new Set();
+  Object.values(cmp.auto.months).forEach(list=>list.forEach(r=>allAutoNorms.add(normName(r.name))));
+  const wanted = names.filter(n=>allAutoNorms.has(normName(n)));
+  await say(`수동 계산 엑셀에서 비교에 필요한 시트 ${wanted.length}개를 읽는 중...`);
+  cmp.manualWb = XLSX.read(manualBin, {type:'binary', sheets:wanted, raw:true,
+    cellFormula:false, cellStyles:false, cellHTML:false, cellNF:false, cellText:false});
+  cmp.manualSheetNames = names;
+  cmp.manualFileName = manualName;
+  cmp.extracted = {};
+
+  // 달 선택 (여러 달이 든 자동 파일이면 고를 수 있음)
+  const sel = document.getElementById('cmp-month');
+  const prev = sel.value;
+  sel.innerHTML = cmp.auto.monthKeys.map(k=>`<option value="${k}">${k}</option>`).join('');
+  sel.value = cmp.auto.monthKeys.includes(prev) ? prev : cmp.auto.monthKeys[cmp.auto.monthKeys.length-1];
+  sel.disabled = cmp.auto.monthKeys.length < 2;
+  cmp.month = sel.value;
+  renderComparison();
+  await say(`완료 — ${cmp.month} 기준으로 비교했습니다.`);
+}
+
+document.getElementById('cmp-file-auto').addEventListener('change', e=>{
+  const f = e.target.files[0]; document.getElementById('cmp-picked-auto').textContent = f ? `✓ ${f.name}` : '';
+});
+document.getElementById('cmp-file-manual').addEventListener('change', e=>{
+  const f = e.target.files[0]; document.getElementById('cmp-picked-manual').textContent = f ? `✓ ${f.name}` : '';
+});
+document.getElementById('cmp-run-btn').addEventListener('click', async ()=>{
+  const fa = document.getElementById('cmp-file-auto').files[0];
+  const fm = document.getElementById('cmp-file-manual').files[0];
+  const status = document.getElementById('cmp-status');
+  const setStatus = (t, err)=>{ status.textContent = t; status.style.color = err ? 'var(--warn)' : ''; };
+  if (!fa || !fm){ setStatus('자동 계산 엑셀과 수동 계산 엑셀을 모두 선택해 주세요.', true); return; }
+  const btn = document.getElementById('cmp-run-btn'); btn.disabled = true;
+  try{
+    const [au8, mu8] = await Promise.all([readFileBuffer(fa), readFileBuffer(fm)]);
+    await runComparison(au8, fa.name, mu8, fm.name, setStatus);
+  } catch(err){
+    console.error(err); setStatus('오류: ' + err.message, true);
+  } finally { btn.disabled = false; }
+});
+document.getElementById('cmp-month').addEventListener('change', e=>{ cmp.month = e.target.value; renderComparison(); });
+document.getElementById('cmp-threshold').addEventListener('input', renderComparison);
+document.getElementById('cmp-search').addEventListener('input', renderComparison);
+document.getElementById('cmp-search-clear').addEventListener('click', ()=>{ document.getElementById('cmp-search').value=''; renderComparison(); });
 </script>
 </body>
 </html>

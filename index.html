@@ -673,6 +673,10 @@
             <label for="employees-month-select">대상 월</label>
             <select id="employees-month-select" style="min-width:120px"></select>
           </div>
+          <div class="field">
+            <label>&nbsp;</label>
+            <button type="button" class="secondary" id="employees-export-btn" title="지금 화면에 보이는 표(월·언어 필터·검색·정렬 적용된 상태)를 엑셀로 저장">엑셀로 내보내기 (.xlsx)</button>
+          </div>
         </div>
         <div class="summary-bar" id="employees-panel-summary"></div>
         <div id="employees-panel-issues-wrap" style="display:none">
@@ -694,6 +698,10 @@
           <div class="field">
             <label for="freelancers-month-select">대상 월</label>
             <select id="freelancers-month-select" style="min-width:120px"></select>
+          </div>
+          <div class="field">
+            <label>&nbsp;</label>
+            <button type="button" class="secondary" id="freelancers-export-btn" title="지금 화면에 보이는 표(월·검색·정렬 적용된 상태)를 엑셀로 저장">엑셀로 내보내기 (.xlsx)</button>
           </div>
         </div>
         <div class="summary-bar" id="freelancers-panel-summary"></div>
@@ -1638,6 +1646,7 @@ function getMonthData(monthKey){
     return {
       employeeRows: state.result.employeeRows, freelancerRows: state.result.freelancerRows,
       businessDays: state.result.businessDays, monthLabel: state.result.period.monthLabel,
+      start: fmtDate(state.result.period.start), end: fmtDate(state.result.period.end),
       issues: state.result.issues || [],
     };
   }
@@ -1646,6 +1655,7 @@ function getMonthData(monthKey){
   if (!m) return null;
   return { employeeRows: m.employeeRows, freelancerRows: m.freelancerRows,
     businessDays: m.businessDays, monthLabel: m.monthLabel,
+    start: m.start, end: m.end,
     issues: m.issues || [] }; // 이 기능 추가 전에 저장된 달은 issues가 없을 수 있음 -> 빈 배열로 처리
 }
 
@@ -1661,6 +1671,8 @@ function populateMonthSelect(selectEl, months){
 
 let employeesLangFilter = null;
 let employeesSortDir = null;   // null | 'asc' | 'desc' — '기준/day' 열 기준 정렬
+let employeesView = null;      // 지금 화면에 보이는 직원 표의 상태(엑셀 내보내기용)
+let freelancersView = null;    // 지금 화면에 보이는 프리랜서 표의 상태(엑셀 내보내기용)
 let freelancersSortDir = null; // null | 'asc' | 'desc' — '정산액' 열 기준 정렬
 
 // null/undefined 값은 정렬 방향과 무관하게 항상 맨 아래로 보낸다(데이터 없음이라 값이 낮은 게 아니므로).
@@ -1697,6 +1709,7 @@ function renderEmployeesPanel(){
     document.getElementById('employees-lang-filter').innerHTML='';
     document.getElementById('employees-panel-table').innerHTML='';
     renderPanelIssues('employees-panel-issues-wrap', 'employees-panel-issues', [], 'employee');
+    employeesView = null;
     return;
   }
   emptyEl.style.display = 'none';
@@ -1726,6 +1739,12 @@ function renderEmployeesPanel(){
   if (employeesSortDir){
     rows = [...rows].sort((a,b)=>compareNullable(a.perDay, b.perDay, employeesSortDir));
   }
+  employeesView = {
+    monthKey: selectedMonth, monthLabel, start: data.start, end: data.end, businessDays,
+    rows, total: employeeRows.length,
+    langFilter: employeesLangFilter, search: document.getElementById('employees-panel-search').value.trim(),
+    sortDir: employeesSortDir,
+  };
 
   const summary = document.getElementById('employees-panel-summary');
   summary.innerHTML = `<div>대상 월: <b>${monthLabel}</b></div>
@@ -1855,6 +1874,7 @@ function renderFreelancersPanel(){
     sel.innerHTML=''; document.getElementById('freelancers-panel-summary').innerHTML='';
     document.getElementById('freelancers-panel-table').innerHTML='';
     renderPanelIssues('freelancers-panel-issues-wrap', 'freelancers-panel-issues', [], 'freelancer');
+    freelancersView = null;
     return;
   }
   emptyEl.style.display = 'none';
@@ -1869,6 +1889,13 @@ function renderFreelancersPanel(){
   if (freelancersSortDir){
     rows = [...rows].sort((a,b)=>compareNullable(a.amount, b.amount, freelancersSortDir));
   }
+  freelancersView = {
+    monthKey: selectedMonth, monthLabel, start: data.start, end: data.end,
+    rows, total: freelancerRows.length,
+    krwTotal: freelancerRows.filter(r=>r.currency==='KRW').reduce((s,r)=>s+r.amount,0),
+    search: document.getElementById('freelancers-panel-search').value.trim(),
+    sortDir: freelancersSortDir,
+  };
 
   const krwTotal = freelancerRows.filter(r=>r.currency==='KRW').reduce((s,r)=>s+r.amount,0);
   const summary = document.getElementById('freelancers-panel-summary');
@@ -1903,6 +1930,92 @@ function renderFreelancersPanel(){
 }
 document.getElementById('freelancers-panel-search').addEventListener('input', renderFreelancersPanel);
 document.getElementById('freelancers-month-select').addEventListener('change', renderFreelancersPanel);
+
+/* ---------------------- 대시보드 표 엑셀 내보내기 ----------------------
+   "지금 화면에 보이는 그대로"를 저장한다 — 선택한 월, 언어 필터, 이름 검색, 정렬이 모두
+   반영된 행만 나가고, 화면에 표시된 것과 같은 값(계산이 끝난 숫자)이 들어간다.
+   어떤 조건으로 뽑은 파일인지 알 수 있게 "조회 조건" 시트를 하나 더 붙인다. */
+
+function exportDashboardTable({sheetName, fileName, headers, dataRows, colFormats, colWidths, infoRows}){
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
+  // 열별 숫자 서식(천 단위 콤마 등) — 값은 그대로 숫자로 들어가므로 엑셀에서 정렬·합계가 된다.
+  for (let r=0; r<dataRows.length; r++){
+    colFormats.forEach((fmt, c)=>{
+      if (!fmt) return;
+      const cell = ws[XLSX.utils.encode_cell({r:r+1, c})];
+      if (cell && cell.t==='n') cell.z = fmt;
+    });
+  }
+  ws['!cols'] = colWidths.map(w=>({wch:w}));
+  if (dataRows.length){
+    ws['!autofilter'] = {ref: XLSX.utils.encode_range({s:{r:0,c:0}, e:{r:dataRows.length, c:headers.length-1}})};
+  }
+  const info = XLSX.utils.aoa_to_sheet([['항목','내용'], ...infoRows]);
+  info['!cols'] = [{wch:18},{wch:70}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.utils.book_append_sheet(wb, info, '조회 조건');
+  XLSX.writeFile(wb, fileName);
+}
+
+function nowStamp(){
+  const d = new Date(), p = n=>String(n).padStart(2,'0');
+  return `${fmtDate(d)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+document.getElementById('employees-export-btn').addEventListener('click', ()=>{
+  const v = employeesView;
+  if (!v){ alert('내보낼 표가 없습니다. 먼저 계산을 실행하거나 저장된 달을 선택해 주세요.'); return; }
+  const headers = ['이름','언어','기준','TR Word','TR Char','TR Hour','RV Word','RV Char','RV Hour',
+                   'PR Word','PR Char','PR Hour','영업일','휴일근무','휴무','환산분량','기준/day'];
+  const dataRows = v.rows.map(r=>[r.name, r.lang||'', r.basis, r.trW, r.trC, r.trH, r.rvW, r.rvC, r.rvH,
+                                  r.prW, r.prC, r.prH, r.businessDays, r.holidayDays, r.leaveDays, r.grandTotal, r.perDay]);
+  const colFormats = [null,null,null,'#,##0','#,##0','#,##0.0#','#,##0','#,##0','#,##0.0#',
+                      '#,##0','#,##0','#,##0.0#','0','0.0##','0.0#','#,##0.0','#,##0.0'];
+  const colWidths = [14,7,10,10,10,10,10,10,10,10,10,10,8,10,8,12,11];
+  const sortText = v.sortDir==='asc' ? '기준/day 오름차순' : v.sortDir==='desc' ? '기준/day 내림차순' : '없음(기본 순서)';
+  const infoRows = [
+    ['대상 월', `${v.monthLabel} (${v.monthKey})`],
+    ['집계 구간', `${v.start||''} ~ ${v.end||''}`],
+    ['영업일', v.businessDays],
+    ['언어 필터', v.langFilter || '전체'],
+    ['이름 검색', v.search || '(없음)'],
+    ['정렬', sortText],
+    ['내보낸 행 / 전체 인원', `${v.rows.length} / ${v.total}명`],
+    ['내보낸 시각', nowStamp()],
+    ['참고', '기준/day는 언어=KO 직원은 Word/day, 그 외는 Char/day입니다(단위가 달라 서로 직접 비교하지 마세요). 값은 화면에 표시된 계산 결과 그대로입니다.'],
+  ];
+  exportDashboardTable({
+    sheetName: `직원퍼포먼스_${v.monthKey}`, fileName: `직원퍼포먼스_${v.monthKey}.xlsx`,
+    headers, dataRows, colFormats, colWidths, infoRows,
+  });
+});
+
+document.getElementById('freelancers-export-btn').addEventListener('click', ()=>{
+  const v = freelancersView;
+  if (!v){ alert('내보낼 표가 없습니다. 먼저 계산을 실행하거나 저장된 달을 선택해 주세요.'); return; }
+  const headers = ['이름','언어','통화','TR Words','TR Chars','RV Words','RV Chars','Hours',
+                   'Word번역','Char번역','Word리뷰','Char리뷰','시간당','정산액'];
+  const dataRows = v.rows.map(r=>[r.name, r.lang||'', r.currency, r.trWords, r.trChars, r.rvWords, r.rvChars, r.hours,
+                                  r.wordTr, r.charTr, r.wordRv, r.charRv, r.hour, r.amount]);
+  const colFormats = [null,null,null,'#,##0','#,##0','#,##0','#,##0','#,##0.0#',null,null,null,null,null,'#,##0'];
+  const colWidths = [14,8,7,11,11,11,11,9,10,10,10,10,10,14];
+  const sortText = v.sortDir==='asc' ? '정산액 오름차순' : v.sortDir==='desc' ? '정산액 내림차순' : '없음(기본 순서: 정산액 큰 순)';
+  const infoRows = [
+    ['대상 월', `${v.monthLabel} (${v.monthKey})`],
+    ['집계 구간', `${v.start||''} ~ ${v.end||''}`],
+    ['이름 검색', v.search || '(없음)'],
+    ['정렬', sortText],
+    ['내보낸 행 / 전체 인원', `${v.rows.length} / ${v.total}명`],
+    ['정산 합계 (KRW, 전체 인원 기준)', v.krwTotal],
+    ['내보낸 시각', nowStamp()],
+    ['참고', '통화가 JPY인 프리랜서의 정산액은 원이 아니라 엔 단위이며, 위 정산 합계(KRW)에는 포함되지 않습니다. 단가가 비어 있는 항목은 0원으로 계산된 값입니다.'],
+  ];
+  exportDashboardTable({
+    sheetName: `프리랜서정산_${v.monthKey}`, fileName: `프리랜서정산_${v.monthKey}.xlsx`,
+    headers, dataRows, colFormats, colWidths, infoRows,
+  });
+});
 
 /* ---------------------- 인물별 비교 ---------------------- */
 

@@ -751,7 +751,7 @@
         <div class="filegrid">
           <div class="fileslot required">
             <label class="slot-title">① 자동 계산 엑셀</label>
-            <span class="slot-desc">대시보드 "직원 퍼포먼스"에서 내보낸 직원퍼포먼스_2026-08.xlsx (또는 여러 달이 든 정산_퍼포먼스_이력 엑셀)</span>
+            <span class="slot-desc">대시보드 "직원 퍼포먼스"에서 내보낸 직원퍼포먼스_2026-08.xlsx — 이 파일의 달을 기준으로 수동 엑셀의 같은 달을 비교합니다(여러 달이 든 파일이면 가장 최근 달)</span>
             <input type="file" id="cmp-file-auto" accept=".xlsx,.xls" />
             <div class="picked" id="cmp-picked-auto"></div>
           </div>
@@ -763,10 +763,6 @@
           </div>
         </div>
         <div class="row" style="margin-top:16px">
-          <div class="field">
-            <label for="cmp-month">비교할 달</label>
-            <select id="cmp-month" style="min-width:120px" disabled></select>
-          </div>
           <div class="field">
             <label for="cmp-threshold">빨간색 표시 기준 (기준/day 차이)</label>
             <input type="number" id="cmp-threshold" value="500" min="0" step="50" style="width:120px" />
@@ -791,6 +787,7 @@
               <input type="text" id="cmp-search" class="search-box" style="margin-bottom:0" placeholder="이름을 입력하면 자동·수동 숫자가 함께 보입니다" />
             </div>
             <div class="field"><label>&nbsp;</label><button type="button" class="secondary" id="cmp-search-clear">필터 해제</button></div>
+            <div class="field"><label>&nbsp;</label><button type="button" class="primary" id="cmp-export-btn" title="지금 화면에 보이는 비교 결과를 엑셀 파일로 저장 (빨간색 표시 포함)">엑셀로 내보내기 (.xlsx)</button></div>
           </div>
           <div class="cmp-legend"><span class="cmp-swatch bad"></span>기준/day 차이가 기준 이상 <span class="cmp-swatch warn"></span>자동과 언어/기준이 다름 <span class="cmp-swatch manual"></span>수동 계산 행</div>
           <div class="table-scroll" style="max-height:640px"><table class="datatable compare" id="cmp-table"></table></div>
@@ -1304,7 +1301,7 @@ function saveHistoryToStorage(hist){
 // ---- server.js 연동 (있으면 자동으로 붙고, 없으면 조용히 무시됨) ----
 // 이 index.html의 버전 표시 — 파일을 바꿀 때마다 이 값을 같이 바꾼다.
 // 화면 왼쪽 아래에 보이는 버전이 방금 받은 파일의 버전과 다르면, 브라우저나 서버가 예전 파일을 쓰고 있는 것이다.
-const APP_VERSION = '2026-09-28 · 실제 데이터 비교';
+const APP_VERSION = '2026-09-28 · 비교 결과 내보내기';
 let syncFailReason = '';   // 동기화가 안 될 때 그 이유(화면에 표시)
 let pushError = '';        // 서버로 저장을 올리다 실패했을 때 그 이유
 let lastSyncAt = null;     // 서버에서 마지막으로 데이터를 받아온 시각
@@ -2549,6 +2546,23 @@ function buildComparison(){
 
 function fmtCmp(n, d){ return (n===null || n===undefined) ? '' : n.toLocaleString('ko-KR', {maximumFractionDigits: d===undefined?2:d}); }
 
+// 화면 "참고 사항"과 엑셀 "조회 조건" 시트가 같이 쓰는 문장들(원문, 이스케이프 전)
+function cmpNoteLines(res, cap){
+  const {entries, manualOnly} = res;
+  const lines = [];
+  if (cmp.auto && cmp.auto.monthKeys.length > 1)
+    lines.push(`자동 계산 엑셀에 ${cmp.auto.monthKeys.length}개 달(${cmp.auto.monthKeys.join(', ')})이 들어 있어 가장 최근 달(${cmp.month})만 비교했습니다. 다른 달을 비교하려면 그 달의 엑셀을 올려 주세요.`);
+  const noManual = entries.filter(e=>!e.manual);
+  if (noManual.length) lines.push(`수동 데이터를 찾지 못한 직원 ${noManual.length}명: ` + noManual.map(e=>`${e.auto.name}(${e.missing})`).join(' · '));
+  const warned = entries.filter(e=>e.manual && e.manual.warns.length);
+  if (warned.length) lines.push(`수동 시트에 확인이 필요한 표기가 있는 직원 ${warned.length}명: ` + warned.map(e=>`${e.auto.name}(${e.manual.warns.join(' / ')})`).join(' · '));
+  if (manualOnly.length){
+    const c = cap || 30;
+    lines.push(`수동 파일에만 있는 시트 ${manualOnly.length}개(직원 목록에 없어 비교 제외): ` + manualOnly.slice(0,c).join(', ') + (manualOnly.length>c ? ` 외 ${manualOnly.length-c}개` : ''));
+  }
+  return lines;
+}
+
 function renderComparison(){
   if (!cmp.auto || !cmp.manualWb || !cmp.month) return;
   const res = buildComparison();
@@ -2561,7 +2575,7 @@ function renderComparison(){
   const flagged = entries.filter(e=>e.bad).sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff));
   const noManual = entries.filter(e=>!e.manual);
   document.getElementById('cmp-summary').innerHTML =
-    `<div>비교 달: <b>${cmp.month}</b></div>
+    `<div>비교 달: <b>${cmp.month}</b> (자동 엑셀 기준)</div>
      <div>자동 직원: <b>${entries.length}명</b> · 수동 데이터 있음: <b>${withManual}명</b></div>
      <div>기준/day 차이 ${fmtCmp(threshold,0)} 이상: <b style="color:${flagged.length?'#9C0006':'inherit'}">${flagged.length}명</b></div>`;
 
@@ -2577,16 +2591,11 @@ function renderComparison(){
     }));
   } else { wrap.style.display = 'none'; }
 
-  // 참고 사항
-  const notes = [];
-  if (noManual.length) notes.push(`수동 데이터를 찾지 못한 직원 ${noManual.length}명: ` + noManual.map(e=>`${esc(e.auto.name)}(${esc(e.missing)})`).join(' · '));
-  const warned = entries.filter(e=>e.manual && e.manual.warns.length);
-  if (warned.length) notes.push(`수동 시트에 확인이 필요한 표기가 있는 직원 ${warned.length}명: ` + warned.map(e=>`${esc(e.auto.name)}(${esc(e.manual.warns.join(' / '))})`).join(' · '));
-  if (manualOnly.length){
-    const cap = 30;
-    notes.push(`수동 파일에만 있는 시트 ${manualOnly.length}개(직원 목록에 없어 비교 제외): ` + manualOnly.slice(0,cap).map(esc).join(', ') + (manualOnly.length>cap ? ` 외 ${manualOnly.length-cap}개` : ''));
-  }
-  document.getElementById('cmp-notes').innerHTML = notes.map(n=>`<div>· ${n}</div>`).join('');
+  // 참고 사항 (화면에서는 escape해서, 엑셀에서는 원문 그대로 쓴다)
+  const notes = cmpNoteLines(res);
+  document.getElementById('cmp-notes').innerHTML = notes.map(n=>`<div>· ${esc(n)}</div>`).join('');
+  const exportBtn = document.getElementById('cmp-export-btn');
+  exportBtn.textContent = q ? `엑셀로 내보내기 (필터된 ${shown.length}명)` : `엑셀로 내보내기 (전체 ${entries.length}명)`;
 
   // 표
   const headers = ['이름','구분','언어','기준','TR Word','TR Char','TR Hour','RV Word','RV Char','RV Hour','PR Word','PR Char','PR Hour',
@@ -2651,13 +2660,8 @@ async function runComparison(autoU8, autoName, manualU8, manualName, setStatus){
   cmp.manualFileName = manualName;
   cmp.extracted = {};
 
-  // 달 선택 (여러 달이 든 자동 파일이면 고를 수 있음)
-  const sel = document.getElementById('cmp-month');
-  const prev = sel.value;
-  sel.innerHTML = cmp.auto.monthKeys.map(k=>`<option value="${k}">${k}</option>`).join('');
-  sel.value = cmp.auto.monthKeys.includes(prev) ? prev : cmp.auto.monthKeys[cmp.auto.monthKeys.length-1];
-  sel.disabled = cmp.auto.monthKeys.length < 2;
-  cmp.month = sel.value;
+  // 비교할 달 = 자동 계산 엑셀의 달. 여러 달이 든 파일이면 가장 최근 달을 쓴다.
+  cmp.month = cmp.auto.monthKeys[cmp.auto.monthKeys.length-1];
   renderComparison();
   await say(`완료 — ${cmp.month} 기준으로 비교했습니다.`);
 }
@@ -2682,10 +2686,207 @@ document.getElementById('cmp-run-btn').addEventListener('click', async ()=>{
     console.error(err); setStatus('오류: ' + err.message, true);
   } finally { btn.disabled = false; }
 });
-document.getElementById('cmp-month').addEventListener('change', e=>{ cmp.month = e.target.value; renderComparison(); });
 document.getElementById('cmp-threshold').addEventListener('input', renderComparison);
 document.getElementById('cmp-search').addEventListener('input', renderComparison);
 document.getElementById('cmp-search-clear').addEventListener('click', ()=>{ document.getElementById('cmp-search').value=''; renderComparison(); });
+
+/* ---- 비교 결과 엑셀 내보내기 ----
+   지금 화면에 보이는 비교 결과(이름 필터가 걸려 있으면 그 사람들만)를 엑셀로 저장한다.
+   자동 행은 모두 위에, 수동 행은 모두 아래에 놓이고, 기준/day 차이가 기준 이상인 칸은 화면처럼 빨간색이다.
+   색을 넣으려면 스타일을 쓸 수 있는 ExcelJS 라이브러리가 필요해서, 버튼을 눌렀을 때 처음 한 번만 불러온다.
+   (불러오지 못하면 색 없이 저장하고, 대신 "판정" 열에 기준 이상 차이가 글자로 들어가 필터로 걸러볼 수 있다.) */
+
+const EXCELJS_URLS = [
+  'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js',
+  'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js',
+];
+const EXCELJS_LOAD_TIMEOUT_MS = 8000;
+
+function loadExcelJS(timeoutMs){
+  if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
+  const limit = timeoutMs || EXCELJS_LOAD_TIMEOUT_MS;
+  return new Promise(resolve=>{
+    let i = 0;
+    const tryNext = ()=>{
+      if (i >= EXCELJS_URLS.length) return resolve(null);
+      const sc = document.createElement('script');
+      let finished = false;
+      let timer = null;
+      const done = (ok)=>{
+        if (finished) return;
+        finished = true; clearTimeout(timer);
+        if (ok && window.ExcelJS) return resolve(window.ExcelJS);
+        try{ sc.remove(); }catch(e){}
+        tryNext();
+      };
+      timer = setTimeout(()=>done(false), limit);
+      sc.onload = ()=>done(true);
+      sc.onerror = ()=>done(false);
+      sc.src = EXCELJS_URLS[i++];
+      document.head.appendChild(sc);
+    };
+    tryNext();
+  });
+}
+
+function saveBuffer(buf, fileName){
+  const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fileName;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 2000);
+}
+
+const CMP_HEADERS = ['이름','구분','언어','기준','TR Word','TR Char','TR Hour','RV Word','RV Char','RV Hour','PR Word','PR Char','PR Hour',
+                     '영업일','휴일근무','휴무','환산분량','기준/day(수동=Char/day)','차이(수동−자동)','판정','비고 / 출처'];
+const CMP_KEYS = ['trW','trC','trH','rvW','rvC','rvH','prW','prC','prH','biz','holi','leave','total'];
+const CMP_FMT = [null,null,null,null,'#,##0','#,##0','#,##0.0#','#,##0','#,##0','#,##0.0#','#,##0','#,##0','#,##0.0#',
+                 '0.0#','0.0##','0.0#','#,##0.0','#,##0.0','+#,##0.0;-#,##0.0;0.0',null,null];
+const CMP_WIDTH = [13,7,7,10,10,10,9,10,10,9,10,10,9,8,9,8,12,22,15,20,60];
+const CMP_COL = {perDay:17, diff:18, judge:19, note:20, lang:2, basis:3};   // 0부터 세는 열 번호
+
+function buildCmpExportModel(){
+  if (!cmp.auto || !cmp.manualWb || !cmp.month) return null;
+  const res = buildComparison();
+  const {entries, threshold} = res;
+  const rawQ = document.getElementById('cmp-search').value.trim();
+  const q = normName(rawQ);
+  const shown = q ? entries.filter(e=>normName(e.auto.name).includes(q)) : entries;
+  const flagText = `기준/day 차이 ${fmtCmp(threshold,0)} 이상`;
+
+  const rows = [];
+  shown.forEach(e=>{                       // 자동 행: 전부 위
+    const a = e.auto;
+    rows.push({kind:'auto', bad:e.bad, cells:[a.name,'자동',a.lang,a.basis, ...CMP_KEYS.map(k=>a[k]), a.perDay, null, e.bad?flagText:'', '']});
+  });
+  shown.forEach(e=>{                       // 수동 행: 전부 아래
+    const a = e.auto, m = e.manual;
+    if (!m){
+      rows.push({kind:'missing', bad:false, cells:[a.name,'수동',null,null, ...CMP_KEYS.map(()=>null), null, null, '수동 없음', e.missing]});
+      return;
+    }
+    const langDiff = !!(a.lang && m.lang && a.lang.toUpperCase()!==m.lang.toUpperCase());
+    const basisDiff = !!(a.basis && m.basis && a.basis!==m.basis);
+    const note = [ ...(m.warns.length ? ['⚠ '+m.warns.join(' / ')] : []), ...(m.note ? [m.note] : []), `시트 ${m.sheet} · ${m.row}행` ].join(' · ');
+    rows.push({kind:'manual', bad:e.bad, langDiff, basisDiff,
+      cells:[a.name,'수동',m.lang,m.basis, ...CMP_KEYS.map(k=>m[k]), m.perDay, e.diff, e.bad?flagText:'', note]});
+  });
+
+  const flagged = entries.filter(e=>e.bad).sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff));
+  const info = [
+    ['비교 달', `${cmp.month} (자동 계산 엑셀 기준)`],
+    ['자동 계산 파일', cmp.auto.fileName],
+    ['수동 계산 파일', cmp.manualFileName],
+    ['빨간색 표시 기준', `기준/day 차이(수동−자동)의 절댓값이 ${fmtCmp(threshold,0)} 이상`],
+    ['이름 필터', rawQ || '(없음)'],
+    ['내보낸 직원 / 전체', `${shown.length} / ${entries.length}명`],
+    ['수동 데이터가 있는 직원', `${entries.filter(e=>e.manual).length}명`],
+    [`차이 ${fmtCmp(threshold,0)} 이상인 직원`, flagged.length ? `${flagged.length}명: ` + flagged.map(e=>`${e.auto.name}(${e.diff>0?'+':''}${Math.round(e.diff)})`).join(', ') : '없음'],
+    ...cmpNoteLines(res, 1000).map((t,i)=>[i===0?'참고 사항':'', t]),
+    ['색 설명', '빨간색: 기준/day 차이가 기준 이상(자동·수동 기준/day 칸과 차이 칸) / 주황색: 자동과 언어 또는 기준(Word/day·Char/day)이 다름 / 연한 노랑: 수동 계산 행'],
+    ['수동 행의 기준 판단', '수동 행의 기준(Word/day, Char/day)은 비고에 "워드 기준"이 있거나 언어가 KO이면 Word/day로 판단한 값입니다.'],
+    ['내보낸 시각', nowStamp()],
+  ];
+  return {fileName:`실제데이터비교_${cmp.month}.xlsx`, sheetName:`실제데이터비교_${cmp.month}`, rows, info, threshold};
+}
+
+// 색 없이(SheetJS 기본 기능만으로) 저장 — 스타일 라이브러리를 불러오지 못했을 때의 대체 경로
+function writeCmpPlain(model){
+  const ws = XLSX.utils.aoa_to_sheet([CMP_HEADERS, ...model.rows.map(r=>r.cells)]);
+  model.rows.forEach((r,ri)=>{
+    CMP_FMT.forEach((fmt,c)=>{
+      if (!fmt) return;
+      const cell = ws[XLSX.utils.encode_cell({r:ri+1, c})];
+      if (cell && cell.t==='n') cell.z = fmt;
+    });
+  });
+  ws['!cols'] = CMP_WIDTH.map(w=>({wch:w}));
+  if (model.rows.length) ws['!autofilter'] = {ref: XLSX.utils.encode_range({s:{r:0,c:0}, e:{r:model.rows.length, c:CMP_HEADERS.length-1}})};
+  const info = XLSX.utils.aoa_to_sheet([['항목','내용'], ...model.info]);
+  info['!cols'] = [{wch:24},{wch:110}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, model.sheetName);
+  XLSX.utils.book_append_sheet(wb, info, '조회 조건');
+  saveBuffer(XLSX.write(wb, {bookType:'xlsx', type:'array'}), model.fileName);
+}
+
+// 화면처럼 색을 넣어서 저장(ExcelJS)
+async function writeCmpStyled(ExcelJS, model){
+  const wb = new ExcelJS.Workbook();
+  wb.creator = '정산·퍼포먼스 자동화';
+  const ws = wb.addWorksheet(model.sheetName, {views:[{state:'frozen', xSplit:2, ySplit:1}]});
+  ws.columns = CMP_WIDTH.map(w=>({width:w}));
+  const thin = {style:'thin', color:{argb:'FFD9D9D9'}};
+  const border = {top:thin, left:thin, bottom:thin, right:thin};
+  const solid = (argb)=>({type:'pattern', pattern:'solid', fgColor:{argb}});
+  const N = CMP_HEADERS.length;
+
+  const hr = ws.addRow(CMP_HEADERS); hr.height = 30;
+  for (let c=1; c<=N; c++){
+    const cell = hr.getCell(c);
+    cell.font = {name:'Arial', size:10, bold:true, color:{argb:'FFFFFFFF'}};
+    cell.fill = solid('FF2B4C7E'); cell.border = border;
+    cell.alignment = {horizontal:'center', vertical:'middle', wrapText:true};
+  }
+  model.rows.forEach(r=>{
+    const row = ws.addRow(r.cells.map(v=> v===undefined ? null : v));
+    for (let c=1; c<=N; c++){
+      const cell = row.getCell(c), i = c-1;
+      cell.font = {name:'Arial', size:10, ...(r.kind==='missing' ? {italic:true, color:{argb:'FF999999'}} : {})};
+      cell.border = border;
+      cell.alignment = {vertical:'top', ...(i===CMP_COL.note ? {wrapText:true} : {})};
+      if (CMP_FMT[i]) cell.numFmt = CMP_FMT[i];
+      if (r.kind !== 'auto') cell.fill = solid('FFFFF8EC');                       // 수동 행: 연한 노랑
+      if (r.langDiff && i===CMP_COL.lang)   cell.fill = solid('FFFFE0B2');        // 언어가 자동과 다름: 주황
+      if (r.basisDiff && i===CMP_COL.basis) cell.fill = solid('FFFFE0B2');
+      if (r.bad && (i===CMP_COL.perDay || i===CMP_COL.judge || (i===CMP_COL.diff && r.kind==='manual'))){
+        cell.fill = solid('FFFFC7CE');                                              // 차이 기준 이상: 빨강
+        cell.font = {name:'Arial', size:10, bold:true, color:{argb:'FF9C0006'}};
+      }
+    }
+  });
+  if (model.rows.length) ws.autoFilter = {from:{row:1, column:1}, to:{row:model.rows.length+1, column:N}};
+
+  const wi = wb.addWorksheet('조회 조건');
+  wi.columns = [{width:24},{width:110}];
+  const ih = wi.addRow(['항목','내용']);
+  for (let c=1; c<=2; c++){
+    const cell = ih.getCell(c);
+    cell.font = {name:'Arial', size:10, bold:true, color:{argb:'FFFFFFFF'}}; cell.fill = solid('FF2B4C7E'); cell.border = border;
+  }
+  model.info.forEach(([k,v])=>{
+    const row = wi.addRow([k, v]);
+    row.getCell(1).font = {name:'Arial', size:10, bold:true};
+    row.getCell(2).font = {name:'Arial', size:10};
+    row.getCell(1).alignment = {vertical:'top'};
+    row.getCell(2).alignment = {vertical:'top', wrapText:true};
+  });
+  saveBuffer(await wb.xlsx.writeBuffer(), model.fileName);
+}
+
+document.getElementById('cmp-export-btn').addEventListener('click', async ()=>{
+  const status = document.getElementById('cmp-status');
+  const say = (t, err)=>{ status.textContent = t; status.style.color = err ? 'var(--warn)' : ''; };
+  const model = buildCmpExportModel();
+  if (!model){ say('먼저 "비교하기"를 실행해 주세요.', true); return; }
+  const btn = document.getElementById('cmp-export-btn'); btn.disabled = true;
+  try{
+    say('엑셀 파일을 만드는 중...');
+    const ExcelJS = await loadExcelJS();
+    if (ExcelJS){
+      try{
+        await writeCmpStyled(ExcelJS, model);
+        say(`저장했습니다: ${model.fileName} (${model.rows.length}행 · 빨간색 표시 포함)`);
+        return;
+      } catch(err){ console.error('색 표시 저장에 실패해 일반 저장으로 대체합니다.', err); }
+    }
+    writeCmpPlain(model);
+    say(`저장했습니다: ${model.fileName} — 색 표시는 없이 저장됐습니다(스타일 라이브러리를 불러오지 못함). "판정" 열로 차이가 큰 행을 걸러볼 수 있습니다.`);
+  } catch(err){
+    console.error(err); say('오류: ' + err.message, true);
+  } finally { btn.disabled = false; }
+});
 </script>
 </body>
 </html>
